@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 
@@ -56,12 +58,37 @@ func main() {
 		iopublisher.WithMarshalMsgFunc(marshalMsg),
 	)
 
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 	channel := easypubsub.NewChannel(
 		easypubsub.NewSource("", subscriber),
 		easypubsub.NewSink("", publisher),
+		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
+			if rand.Int()%3 == 0 {
+				inMsg.Nack()
+				return nil, errors.New("this is zero error")
+			}
+			inMsg.Ack()
+			return inMsg, nil
+		}),
+		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
+			if rand.Int()%3 == 1 {
+				inMsg.Nack()
+				return nil, errors.New("this is one error")
+			}
+			inMsg.Ack()
+			return inMsg, nil
+		}),
+		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
+			if rand.Int()%3 == 1 {
+				inMsg.Nack()
+				return nil, errors.New("this is two error")
+			}
+			inMsg.Ack()
+			return inMsg, nil
+		}),
 		easypubsub.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 	defer cancelFunc()
 	err = channel.Flow(ctx)
 	if err != nil {

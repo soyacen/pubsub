@@ -28,8 +28,9 @@ type (
 	}
 
 	channelOptions struct {
-		filter Filter
-		logger Logger
+		filters []Filter
+		filter  Filter
+		logger  Logger
 	}
 
 	Channel struct {
@@ -141,8 +142,8 @@ func NewSink(topic string, publisher Publisher) *Sink {
 
 func defaultChannelOptions() *channelOptions {
 	return &channelOptions{
-		filter: DefaultFilter,
-		logger: DefaultLogger(),
+		filters: []Filter{DefaultFilter},
+		logger:  DefaultLogger(),
 	}
 }
 
@@ -154,9 +155,9 @@ func WithLogger(logger Logger) ChannelOption {
 	}
 }
 
-func WithFilter(filter Filter) ChannelOption {
+func WithFilter(filters ...Filter) ChannelOption {
 	return func(o *channelOptions) {
-		o.filter = filter
+		o.filters = append(o.filters, filters...)
 	}
 }
 
@@ -164,6 +165,16 @@ func NewChannel(source *Source, sink *Sink, opts ...ChannelOption) *Channel {
 	o := defaultChannelOptions()
 	for _, opt := range opts {
 		opt(o)
+	}
+	o.filter = func(inMsg *Message) (outMsg *Message, err error) {
+		for _, filter := range o.filters {
+			if outMsg, err := filter(inMsg); err != nil {
+				return nil, err
+			} else {
+				inMsg = outMsg
+			}
+		}
+		return inMsg, err
 	}
 	channel := &Channel{
 		o:      o,

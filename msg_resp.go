@@ -1,5 +1,7 @@
 package easypubsub
 
+import "sync"
+
 type (
 	Response struct {
 		Err    error
@@ -11,6 +13,7 @@ type (
 		nackC     chan struct{}
 		ackRespC  chan Response
 		nackRespC chan Response
+		respOnce  sync.Once
 	}
 )
 
@@ -19,11 +22,19 @@ func NewResponder(ackC chan struct{}, nackC chan struct{}, ackRespC chan Respons
 }
 
 func (r *Responder) Ack() Response {
-	close(r.ackC)
-	return <-r.ackRespC
+	var resp Response
+	r.respOnce.Do(func() {
+		close(r.ackC)
+		resp = <-r.ackRespC
+	})
+	return resp
 }
 
 func (r *Responder) Nack() Response {
-	close(r.nackC)
-	return <-r.nackRespC
+	var resp Response
+	r.respOnce.Do(func() {
+		close(r.nackC)
+		resp = <-r.nackRespC
+	})
+	return resp
 }
