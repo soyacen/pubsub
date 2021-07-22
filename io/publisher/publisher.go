@@ -24,7 +24,7 @@ func (pub *Publisher) AddInterceptor(interceptors ...easypubsub.Interceptor) {
 	pub.o.interceptors = append(pub.o.interceptors, interceptors...)
 }
 
-func (pub *Publisher) Publish(topic string, msg *easypubsub.Msg) (result easypubsub.PublishResult) {
+func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result easypubsub.PublishResult) {
 	if atomic.LoadInt32(&pub.close) == CLOSED {
 		return easypubsub.PublishResult{Err: errors.New("publisher is closed")}
 	}
@@ -49,6 +49,10 @@ func (pub *Publisher) Close() error {
 		return pub.writeCloser.Close()
 	}
 	return nil
+}
+
+func (pub *Publisher) String() string {
+	return "IOPublisher"
 }
 
 func New(writer io.Writer, opts ...Option) easypubsub.Publisher {

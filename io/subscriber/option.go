@@ -14,7 +14,7 @@ const (
 	splitTypeBlock     SplitType = 1
 )
 
-type UnmarshalMsgFunc func(topic string, data []byte) (msg *easypubsub.Msg, err error)
+type UnmarshalMsgFunc func(topic string, data []byte) (msg *easypubsub.Message, err error)
 
 type options struct {
 	logger           easypubsub.Logger
@@ -23,7 +23,7 @@ type options struct {
 	splitType        SplitType
 	blockSize        int
 	delimiter        byte
-	PollInterval     time.Duration
+	pollInterval     time.Duration
 	timeout          time.Duration
 }
 
@@ -36,16 +36,17 @@ func (o *options) apply(opts ...Option) {
 func defaultOptions() *options {
 	return &options{
 		logger: easypubsub.DefaultLogger(),
-		unmarshalMsgFunc: func(topic string, data []byte) (msg *easypubsub.Msg, err error) {
-			msg = easypubsub.NewMsg(
+		unmarshalMsgFunc: func(topic string, data []byte) (msg *easypubsub.Message, err error) {
+			msg = easypubsub.NewMessage(
 				easypubsub.WithBody(data),
 				easypubsub.WithHeader(map[string]string{"topic": topic}),
 				easypubsub.WithContext(context.Background()),
 			)
 			return msg, nil
 		},
-		splitType: splitTypeDelimiter,
-		delimiter: '\n',
+		splitType:    splitTypeDelimiter,
+		delimiter:    '\n',
+		pollInterval: time.Second,
 	}
 }
 
@@ -85,7 +86,7 @@ func WithDelimiter(delimiter byte) Option {
 
 func WithPollInterval(pollInterval time.Duration) Option {
 	return func(o *options) {
-		o.PollInterval = pollInterval
+		o.pollInterval = pollInterval
 	}
 }
 

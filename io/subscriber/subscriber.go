@@ -21,8 +21,8 @@ type Subscriber struct {
 	o          *options
 	readCloser io.ReadCloser
 	close      int32
-	closing    chan struct{}
-	msgC       chan *easypubsub.Msg
+	closeC     chan struct{}
+	msgC       chan *easypubsub.Message
 	errC       chan error
 }
 
@@ -34,13 +34,13 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) 
 	if atomic.LoadInt32(&sub.close) == CLOSED {
 		return errors.New("subscriber is closed")
 	}
-	sub.msgC = make(chan *easypubsub.Msg)
+	sub.msgC = make(chan *easypubsub.Message)
 	sub.errC = make(chan error)
 	go sub.consume(ctx, topic)
 	return nil
 }
 
-func (sub *Subscriber) Messages() (msgC <-chan *easypubsub.Msg) {
+func (sub *Subscriber) Messages() (msgC <-chan *easypubsub.Message) {
 	return sub.msgC
 }
 
@@ -50,10 +50,14 @@ func (sub *Subscriber) Errors() (errC <-chan error) {
 
 func (sub *Subscriber) Close() error {
 	if atomic.CompareAndSwapInt32(&sub.close, NORMAL, CLOSED) {
-		close(sub.closing)
+		close(sub.closeC)
 		return sub.readCloser.Close()
 	}
 	return nil
+}
+
+func (sub *Subscriber) String() string {
+	return "IOSubscriber"
 }
 
 func (sub *Subscriber) consume(ctx context.Context, topic string) {
@@ -71,7 +75,7 @@ FirstLoop:
 			return
 		}
 		select {
-		case <-sub.closing:
+		case <-sub.closeC:
 			return
 		case <-ctx.Done():
 			sub.errC <- ctx.Err()
@@ -80,7 +84,7 @@ FirstLoop:
 			block, err := sub.read(reader)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					time.Sleep(sub.o.PollInterval)
+					time.Sleep(sub.o.pollInterval)
 					continue FirstLoop
 				} else {
 					sub.errC <- err
@@ -88,7 +92,7 @@ FirstLoop:
 				}
 			}
 			if len(block) == 0 {
-				time.Sleep(sub.o.PollInterval)
+				time.Sleep(sub.o.pollInterval)
 				continue FirstLoop
 			}
 		HandleMsg:
@@ -109,8 +113,7 @@ FirstLoop:
 			nackC := make(chan struct{})
 			ackRespC := make(chan easypubsub.Response)
 			nackRespC := make(chan easypubsub.Response)
-			responder := easypubsub.NewResponder(ackC, nackC, ackRespC, nackRespC)
-			msg.SetResponder(responder)
+			msg.Responder = easypubsub.NewResponder(ackC, nackC, ackRespC, nackRespC)
 			sub.msgC <- msg
 			select {
 			case <-ackC:
@@ -124,7 +127,7 @@ FirstLoop:
 				close(ackC)
 				close(ackRespC)
 				goto HandleMsg
-			case <-sub.closing:
+			case <-sub.closeC:
 				return
 			}
 		}
@@ -149,7 +152,7 @@ func (sub *Subscriber) read(reader *bufio.Reader) ([]byte, error) {
 func New(reader io.Reader, opts ...Option) easypubsub.Subscriber {
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Subscriber{o: o, close: NORMAL, closing: make(chan struct{})}
+	pub := &Subscriber{o: o, close: NORMAL, closeC: make(chan struct{})}
 	if readCloser, ok := reader.(io.ReadCloser); ok {
 		pub.readCloser = readCloser
 	} else {

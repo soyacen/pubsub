@@ -17,3 +17,5 @@
 .idea
 /example/io/subscriber/subscriber
 /example/io/publisher/publisher
+/example/channel/copy/copy
+/go.sum

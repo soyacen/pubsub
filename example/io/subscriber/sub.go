@@ -25,7 +25,7 @@ func main() {
 		panic(err)
 	}
 
-	a := func(topic string, msg *easypubsub.Msg) error {
+	a := func(topic string, msg *easypubsub.Message) error {
 		msg.Header().Set("time", time.Now().Format(time.RFC3339))
 		return err
 	}
@@ -61,7 +61,7 @@ out:
 			}
 			fmt.Println(msg.Header())
 			fmt.Println(string(msg.Body()))
-			response := msg.Responder().Ack()
+			response := msg.Ack()
 			fmt.Println(response)
 			count++
 			fmt.Println(count)

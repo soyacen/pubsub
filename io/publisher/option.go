@@ -4,7 +4,7 @@ import (
 	easypubsub "github.com/soyacen/pubsub"
 )
 
-type MarshalMsgFunc func(topic string, msg *easypubsub.Msg) ([]byte, error)
+type MarshalMsgFunc func(topic string, msg *easypubsub.Message) ([]byte, error)
 
 type options struct {
 	logger         easypubsub.Logger
@@ -21,7 +21,7 @@ func (o *options) apply(opts ...Option) {
 func defaultOptions() *options {
 	return &options{
 		logger: easypubsub.DefaultLogger(),
-		marshalMsgFunc: func(topic string, msg *easypubsub.Msg) ([]byte, error) {
+		marshalMsgFunc: func(topic string, msg *easypubsub.Message) ([]byte, error) {
 			return msg.Body(), nil
 		},
 	}

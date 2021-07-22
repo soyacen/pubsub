@@ -20,17 +20,17 @@ func main() {
 		return
 	}
 
-	f, err := os.OpenFile(*filepath, os.O_RDONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	f, err := os.OpenFile(*filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	var headerFunc = func(topic string, msg *easypubsub.Msg) error {
+	var headerFunc = func(topic string, msg *easypubsub.Message) error {
 		msg.Header().Set("interceptor", "true")
 		return nil
 	}
 
-	var marsharlMsg = func(topic string, msg *easypubsub.Msg) ([]byte, error) {
+	var marshalMsg = func(topic string, msg *easypubsub.Message) ([]byte, error) {
 		buf := bytes.NewBufferString(topic + "\n")
 		header, _ := json.Marshal(msg.Header())
 		buf.Write(header)
@@ -41,12 +41,12 @@ func main() {
 	}
 	publisher := iopublisher.New(
 		f,
-		iopublisher.WithMarshalMsgFunc(marsharlMsg),
+		iopublisher.WithMarshalMsgFunc(marshalMsg),
 		iopublisher.WithInterceptor(headerFunc),
 	)
 
 	for i := 0; i < 100; i++ {
-		result := publisher.Publish("awesome", easypubsub.NewMsg(easypubsub.WithBody([]byte("easypubsub 牛逼"))))
+		result := publisher.Publish("awesome", easypubsub.NewMessage(easypubsub.WithBody([]byte("easypubsub 牛逼"))))
 		if result.Err != nil {
 			panic(err)
 		}

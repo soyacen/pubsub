@@ -1,5 +1,11 @@
 package easypubsub
 
+import (
+	"fmt"
+	"io"
+	"log"
+)
+
 var defaultLogger Logger = &nopLogger{}
 
 func DefaultLogger() Logger {
@@ -7,24 +13,29 @@ func DefaultLogger() Logger {
 }
 
 type Logger interface {
-	Debug(args ...interface{})
-	Debugf(template string, args ...interface{})
-	Info(args ...interface{})
-	Infof(template string, args ...interface{})
-	Error(args ...interface{})
-	Errorf(template string, args ...interface{})
+	Log(args ...interface{})
+	Logf(format string, args ...interface{})
 }
 
 type nopLogger struct{}
 
-func (l *nopLogger) Debug(args ...interface{}) {}
+func (l *nopLogger) Log(args ...interface{}) {}
 
-func (l *nopLogger) Debugf(template string, args ...interface{}) {}
+func (l *nopLogger) Logf(format string, args ...interface{}) {}
 
-func (l *nopLogger) Info(args ...interface{}) {}
+type StdLogger struct {
+	logger *log.Logger
+}
 
-func (l *nopLogger) Infof(template string, args ...interface{}) {}
+func (s *StdLogger) Log(args ...interface{}) {
+	s.logger.Output(2, fmt.Sprintln(args...))
+}
 
-func (l *nopLogger) Error(args ...interface{}) {}
+func (s *StdLogger) Logf(format string, args ...interface{}) {
+	s.logger.Output(2, fmt.Sprintf(format, args...))
 
-func (l *nopLogger) Errorf(template string, args ...interface{}) {}
+}
+
+func NewStdLogger(writer io.Writer) *StdLogger {
+	return &StdLogger{logger: log.New(writer, "easypubsub ", log.LstdFlags|log.Lshortfile)}
+}
