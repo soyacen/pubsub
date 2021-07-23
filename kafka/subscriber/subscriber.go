@@ -1,4 +1,4 @@
-package iosubscriber
+package kafkasubscriber
 
 import (
 	"bufio"
@@ -53,7 +53,7 @@ func (sub *Subscriber) Close() error {
 }
 
 func (sub *Subscriber) String() string {
-	return "IOSubscriber"
+	return "KafkaSubscriber"
 }
 
 func (sub *Subscriber) consume(ctx context.Context, topic string) {

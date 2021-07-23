@@ -25,9 +25,9 @@ func main() {
 		panic(err)
 	}
 
-	var headerFunc = func(topic string, msg *easypubsub.Message) error {
+	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
 		msg.Header().Set("interceptor", "true")
-		return nil
+		return handler(topic, msg)
 	}
 
 	var marshalMsg = func(topic string, msg *easypubsub.Message) ([]byte, error) {

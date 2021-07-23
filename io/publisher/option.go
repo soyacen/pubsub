@@ -10,6 +10,7 @@ type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
 	interceptors   []easypubsub.Interceptor
+	interceptor    easypubsub.Interceptor
 }
 
 func (o *options) apply(opts ...Option) {
@@ -44,5 +45,6 @@ func WithLogger(logger easypubsub.Logger) Option {
 func WithInterceptor(interceptors ...easypubsub.Interceptor) Option {
 	return func(o *options) {
 		o.interceptors = append(o.interceptors, interceptors...)
+		o.interceptor = easypubsub.ChainInterceptor(o.interceptors...)
 	}
 }

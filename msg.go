@@ -49,7 +49,7 @@ func (msg *Message) Clone() *Message {
 	body := make([]byte, len(msg.body))
 	copy(body, msg.Body())
 	out := &Message{
-		id:     uuid.New().String(),
+		id:     uuid.NewString(),
 		header: msg.header.Clone(),
 		body:   body,
 	}
@@ -80,8 +80,9 @@ func WithBody(body []byte) MessageOption {
 
 func NewMessage(opts ...MessageOption) *Message {
 	msg := &Message{
-		header: make(Header),
-		id:     uuid.New().String(),
+		header: NewHeader(),
+		id:     uuid.NewString(),
+		ctx:    context.Background(),
 	}
 	for _, opt := range opts {
 		opt(msg)

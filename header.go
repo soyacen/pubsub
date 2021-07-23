@@ -8,18 +8,23 @@ import (
 // Header is a mapping from header keys to values.
 type Header map[string][]string
 
-// New creates an Header from a given key-value map.
-func New(m map[string]string) Header {
-	Header := Header{}
-	for k, val := range m {
-		key := strings.ToLower(k)
-		Header[key] = append(Header[key], val)
-	}
-	return Header
+// NewHeader creates an Header.
+func NewHeader() Header {
+	return make(Header)
 }
 
-// Pairs returns an Header formed by the mapping of key, value ...
-func Pairs(kv ...string) (Header, error) {
+// NewHeaderWithMap creates an Header from a given key-value map.
+func NewHeaderWithMap(m map[string]string) Header {
+	header := NewHeader()
+	for k, val := range m {
+		key := strings.ToLower(k)
+		header[key] = append(header[key], val)
+	}
+	return header
+}
+
+// NewHeaderWithPairs returns an Header formed by the mapping of key, value...
+func NewHeaderWithPairs(kv ...string) (Header, error) {
 	if len(kv)%2 == 1 {
 		return nil, fmt.Errorf("pairs got the odd number of input pairs for header: %d", len(kv))
 	}

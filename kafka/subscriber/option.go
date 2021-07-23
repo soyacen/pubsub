@@ -1,4 +1,4 @@
-package iosubscriber
+package kafkasubscriber
 
 import (
 	"context"

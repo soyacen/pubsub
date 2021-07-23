@@ -20,28 +20,25 @@ type Publisher struct {
 	close       int32
 }
 
-func (pub *Publisher) AddInterceptor(interceptors ...easypubsub.Interceptor) {
-	pub.o.interceptors = append(pub.o.interceptors, interceptors...)
-}
-
-func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result easypubsub.PublishResult) {
+func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *easypubsub.PublishResult) {
 	if atomic.LoadInt32(&pub.close) == CLOSED {
-		return easypubsub.PublishResult{Err: errors.New("publisher is closed")}
+		return &easypubsub.PublishResult{Err: errors.New("publisher is closed")}
 	}
-	for _, interceptor := range pub.o.interceptors {
-		if err := interceptor(topic, msg); err != nil {
-			return easypubsub.PublishResult{Err: fmt.Errorf("msg is intercepted, %w", err)}
+	if pub.o.interceptor != nil {
+		err := pub.o.interceptor(topic, msg, easypubsub.DefaultInterceptHandler)
+		if err != nil {
+			return &easypubsub.PublishResult{Err: fmt.Errorf("msg is intercepted, %w", err)}
 		}
 	}
 	data, err := pub.o.marshalMsgFunc(topic, msg)
 	if err != nil {
-		return easypubsub.PublishResult{Err: fmt.Errorf("failed marsharl msg, %w", err)}
+		return &easypubsub.PublishResult{Err: fmt.Errorf("failed marsharl msg, %w", err)}
 	}
 	n, err := pub.writeCloser.Write(data)
 	if err != nil {
-		return easypubsub.PublishResult{Err: fmt.Errorf("failed write msg, %w", err)}
+		return &easypubsub.PublishResult{Err: fmt.Errorf("failed write msg, %w", err)}
 	}
-	return easypubsub.PublishResult{Result: n}
+	return &easypubsub.PublishResult{Result: n}
 }
 
 func (pub *Publisher) Close() error {

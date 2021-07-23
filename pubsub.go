@@ -7,22 +7,18 @@ import (
 )
 
 type (
-	Interceptor func(topic string, msg *Message) error
-
 	PublishResult struct {
 		Err    error
 		Result interface{}
 	}
 
 	Publisher interface {
-		AddInterceptor(interceptors ...Interceptor)
-		Publish(topic string, msg *Message) (result PublishResult)
+		Publish(topic string, msg *Message) (result *PublishResult)
 		io.Closer
 		fmt.Stringer
 	}
 
 	Subscriber interface {
-		AddInterceptor(interceptors ...Interceptor)
 		Subscribe(ctx context.Context, topic string) (err error)
 		Messages() (msgC <-chan *Message)
 		Errors() (errC <-chan error)
