@@ -47,7 +47,8 @@ func (sub *Subscriber) Errors() (errC <-chan error) {
 func (sub *Subscriber) Close() error {
 	if atomic.CompareAndSwapInt32(&sub.close, NORMAL, CLOSED) {
 		close(sub.closeC)
-		return sub.readCloser.Close()
+		err := sub.readCloser.Close()
+		return err
 	}
 	return nil
 }
@@ -74,7 +75,6 @@ FirstLoop:
 		case <-sub.closeC:
 			return
 		case <-ctx.Done():
-			sub.errC <- ctx.Err()
 			return
 		default:
 			block, err := sub.read(reader)
@@ -91,7 +91,7 @@ FirstLoop:
 				time.Sleep(sub.o.pollInterval)
 				continue FirstLoop
 			}
-		HandleMsg:
+
 			msg, err := sub.o.unmarshalMsgFunc(topic, block)
 			if err != nil {
 				sub.errC <- err
@@ -104,27 +104,24 @@ FirstLoop:
 					continue FirstLoop
 				}
 			}
-
-			ackC := make(chan struct{})
-			nackC := make(chan struct{})
-			ackRespC := make(chan easypubsub.Response)
-			nackRespC := make(chan easypubsub.Response)
-			msg.Responder = easypubsub.NewResponder(ackC, nackC, ackRespC, nackRespC)
+		HandleMsg:
+			msg.Responder = easypubsub.NewResponder()
+			// send msg to msg chan
 			sub.msgC <- msg
+			sub.o.logger.Logf("message %s sent to channel, wait ack...", msg.Id())
 			select {
-			case <-ackC:
-				ackRespC <- easypubsub.Response{}
-				close(ackRespC)
-				close(nackC)
-				close(nackRespC)
-			case <-nackC:
-				nackRespC <- easypubsub.Response{}
-				close(nackRespC)
-				close(ackC)
-				close(ackRespC)
-				goto HandleMsg
-			case <-sub.closeC:
+			case <-msg.Acked():
+				msg.AckResp() <- &easypubsub.Response{Result: "ok"}
+				sub.o.logger.Logf("message %s acked", msg.Id())
 				return
+			case <-msg.Nacked():
+				msg.NackResp() <- &easypubsub.Response{Result: "ok"}
+				sub.o.logger.Logf("message %s nacked", msg.Id())
+				if sub.o.nackResendSleepDuration > 0 {
+					time.Sleep(sub.o.nackResendSleepDuration)
+				}
+				sub.o.logger.Logf("message %s resend", msg.Id())
+				goto HandleMsg
 			}
 		}
 	}
@@ -148,11 +145,11 @@ func (sub *Subscriber) read(reader *bufio.Reader) ([]byte, error) {
 func New(reader io.Reader, opts ...Option) easypubsub.Subscriber {
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Subscriber{o: o, close: NORMAL, closeC: make(chan struct{})}
+	sub := &Subscriber{o: o, close: NORMAL, closeC: make(chan struct{})}
 	if readCloser, ok := reader.(io.ReadCloser); ok {
-		pub.readCloser = readCloser
+		sub.readCloser = readCloser
 	} else {
-		pub.readCloser = ioutil.NopCloser(reader)
+		sub.readCloser = ioutil.NopCloser(reader)
 	}
-	return pub
+	return sub
 }

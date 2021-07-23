@@ -2,40 +2,29 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	easypubsub "github.com/soyacen/pubsub"
-	iosubscriber "github.com/soyacen/pubsub/io/subscriber"
+	kafkasubscriber "github.com/soyacen/pubsub/kafka/subscriber"
 )
 
-var filepath = flag.String("filepath", "", "file path")
-
 func main() {
-	flag.Parse()
-	if *filepath == "" {
-		flag.Usage()
-		return
-	}
-
-	f, err := os.OpenFile(*filepath, os.O_RDONLY, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
 	a := func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
 		msg.Header().Set("time", time.Now().Format(time.RFC3339))
 		return handler(topic, msg)
 	}
 
-	subscriber := iosubscriber.New(
-		f,
-		iosubscriber.WithDelimiter('\n'),
-		iosubscriber.WithPollInterval(time.Second),
-		iosubscriber.WithInterceptor(a),
+	subscriber, err := kafkasubscriber.New(
+		[]string{"localhost:9092"},
+		kafkasubscriber.WithConsumerConfig(kafkasubscriber.DefaultSubscriberConfig()),
+		kafkasubscriber.WithInterceptor(a),
+		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
+	if err != nil {
+		panic(err)
+	}
 	defer func(subscriber easypubsub.Subscriber) {
 		err := subscriber.Close()
 		if err != nil {
@@ -43,7 +32,7 @@ func main() {
 		}
 	}(subscriber)
 
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	err = subscriber.Subscribe(ctx, "awesome")
 	if err != nil {
 		panic(err)
@@ -57,16 +46,21 @@ out:
 		select {
 		case msg, ok := <-msgC:
 			if !ok {
+				fmt.Println("break on msg chan")
 				break out
 			}
-			fmt.Println(msg.Header())
-			fmt.Println(string(msg.Body()))
-			response := msg.Ack()
-			fmt.Println(response)
 			count++
 			fmt.Println(count)
+			fmt.Println("===============", count, "===============")
+			fmt.Println(msg.Header())
+			fmt.Println(string(msg.Body()))
+			fmt.Println("57")
+			response := msg.Ack()
+			fmt.Println("59")
+			fmt.Println(response)
 		case err, ok := <-errC:
 			if !ok {
+				fmt.Println("break on error chan")
 				break out
 			}
 			fmt.Println(err)

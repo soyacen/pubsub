@@ -10,13 +10,20 @@ import (
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error)
 
+type producerType = int
+
+const (
+	producerTypeSync  producerType = 0
+	producerTypeAsync producerType = 1
+)
+
 type options struct {
-	logger          easypubsub.Logger
-	marshalMsgFunc  MarshalMsgFunc
-	interceptors    []easypubsub.Interceptor
-	interceptor     easypubsub.Interceptor
-	asyncEnabled    bool
-	publisherConfig *sarama.Config
+	logger         easypubsub.Logger
+	marshalMsgFunc MarshalMsgFunc
+	interceptors   []easypubsub.Interceptor
+	interceptor    easypubsub.Interceptor
+	producerType   producerType
+	producerConfig *sarama.Config
 }
 
 func (o *options) apply(opts ...Option) {
@@ -27,10 +34,10 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:          easypubsub.DefaultLogger(),
-		marshalMsgFunc:  DefaultMarshalMsgFunc,
-		asyncEnabled:    false,
-		publisherConfig: DefaultPublisherConfig(),
+		logger:         easypubsub.DefaultLogger(),
+		marshalMsgFunc: DefaultMarshalMsgFunc,
+		producerType:   producerTypeSync,
+		producerConfig: DefaultSaramaConfig(),
 	}
 }
 
@@ -55,21 +62,21 @@ func WithInterceptor(interceptors ...easypubsub.Interceptor) Option {
 	}
 }
 
-func WithSyncPublisherConfig(config *sarama.Config) Option {
+func WithSyncProducerConfig(config *sarama.Config) Option {
 	return func(o *options) {
-		o.publisherConfig = config
-		o.publisherConfig.Producer.Return.Errors = true
-		o.publisherConfig.Producer.Return.Successes = true
-		o.asyncEnabled = false
+		o.producerType = producerTypeSync
+		o.producerConfig = config
+		o.producerConfig.Producer.Return.Errors = true
+		o.producerConfig.Producer.Return.Successes = true
 	}
 }
 
-func WithAsyncPublisherConfig(config *sarama.Config) Option {
+func WithAsyncProducerConfig(config *sarama.Config) Option {
 	return func(o *options) {
-		o.publisherConfig = config
-		o.publisherConfig.Producer.Return.Errors = true
-		o.publisherConfig.Producer.Return.Successes = true
-		o.asyncEnabled = true
+		o.producerType = producerTypeAsync
+		o.producerConfig = config
+		o.producerConfig.Producer.Return.Errors = true
+		o.producerConfig.Producer.Return.Successes = true
 	}
 }
 
@@ -92,12 +99,11 @@ func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message) (*sarama.Produ
 	return pMsg, nil
 }
 
-func DefaultPublisherConfig() *sarama.Config {
+func DefaultSaramaConfig() *sarama.Config {
 	config := sarama.NewConfig()
 	config.Producer.Retry.Max = 10
 	config.Producer.Return.Successes = true
 	config.Producer.Return.Errors = true
-	config.Version = sarama.V1_0_0_0
 	config.Metadata.Retry.Backoff = time.Second * 2
 	config.ClientID = "easypubsub"
 	return config

@@ -20,3 +20,4 @@
 /example/io/publisher/publisher
 /example/channel/copy/copy
 /example/kafka/publisher/publisher
+/example/kafka/subscriber/subscriber

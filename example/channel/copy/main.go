@@ -37,7 +37,7 @@ func main() {
 	unmarshalMsgFunc := func(topic string, data []byte) (msg *easypubsub.Message, err error) {
 		msg = easypubsub.NewMessage(
 			easypubsub.WithBody(data),
-			easypubsub.WithHeader(map[string]string{"topic": topic}),
+			easypubsub.WithHeader(map[string][]string{"topic": {topic}}),
 			easypubsub.WithContext(context.Background()),
 		)
 		return msg, nil

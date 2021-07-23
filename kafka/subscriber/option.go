@@ -2,30 +2,32 @@ package kafkasubscriber
 
 import (
 	"context"
+	"strconv"
 	"time"
+
+	"github.com/Shopify/sarama"
 
 	easypubsub "github.com/soyacen/pubsub"
 )
 
-type SplitType = int
+type consumerType = int
 
 const (
-	splitTypeDelimiter SplitType = 0
-	splitTypeBlock     SplitType = 1
+	consumerTypeConsumer      consumerType = 0
+	consumerTypeConsumerGroup consumerType = 1
 )
 
-type UnmarshalMsgFunc func(topic string, data []byte) (msg *easypubsub.Message, err error)
+type UnmarshalMsgFunc func(ctx context.Context, topic string, kafkaMsg *sarama.ConsumerMessage) (msg *easypubsub.Message, err error)
 
 type options struct {
-	logger           easypubsub.Logger
-	unmarshalMsgFunc UnmarshalMsgFunc
-	interceptors     []easypubsub.Interceptor
-	interceptor      easypubsub.Interceptor
-	splitType        SplitType
-	blockSize        int
-	delimiter        byte
-	pollInterval     time.Duration
-	timeout          time.Duration
+	logger                  easypubsub.Logger
+	unmarshalMsgFunc        UnmarshalMsgFunc
+	interceptors            []easypubsub.Interceptor
+	interceptor             easypubsub.Interceptor
+	consumerType            consumerType
+	consumerConfig          *sarama.Config
+	groupID                 string
+	nackResendSleepDuration time.Duration
 }
 
 func (o *options) apply(opts ...Option) {
@@ -36,18 +38,9 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger: easypubsub.DefaultLogger(),
-		unmarshalMsgFunc: func(topic string, data []byte) (msg *easypubsub.Message, err error) {
-			msg = easypubsub.NewMessage(
-				easypubsub.WithBody(data),
-				easypubsub.WithHeader(map[string]string{"topic": topic}),
-				easypubsub.WithContext(context.Background()),
-			)
-			return msg, nil
-		},
-		splitType:    splitTypeDelimiter,
-		delimiter:    '\n',
-		pollInterval: time.Second,
+		logger:           easypubsub.DefaultLogger(),
+		unmarshalMsgFunc: DefaultUnmarshalMsgFunc,
+		consumerType:     consumerTypeConsumer,
 	}
 }
 
@@ -72,28 +65,51 @@ func WithInterceptor(interceptors ...easypubsub.Interceptor) Option {
 	}
 }
 
-func WithBlockSize(size int) Option {
+func WithConsumerConfig(config *sarama.Config) Option {
 	return func(o *options) {
-		o.blockSize = size
-		o.splitType = splitTypeBlock
+		o.consumerType = consumerTypeConsumer
+		o.consumerConfig = config
 	}
 }
 
-func WithDelimiter(delimiter byte) Option {
+func WithConsumerGroupConfig(groupID string, config *sarama.Config) Option {
 	return func(o *options) {
-		o.delimiter = delimiter
-		o.splitType = splitTypeDelimiter
+		o.consumerType = consumerTypeConsumerGroup
+		o.consumerConfig = config
+		o.groupID = groupID
 	}
 }
 
-func WithPollInterval(pollInterval time.Duration) Option {
+func WithNackResendSleepDuration(duration time.Duration) Option {
 	return func(o *options) {
-		o.pollInterval = pollInterval
+		o.nackResendSleepDuration = duration
 	}
 }
 
-func WithTimeOut(timeout time.Duration) Option {
-	return func(o *options) {
-		o.timeout = timeout
+func DefaultUnmarshalMsgFunc(ctx context.Context, topic string, kafkaMsg *sarama.ConsumerMessage) (msg *easypubsub.Message, err error) {
+	header := map[string][]string{
+		"Topic":          {topic},
+		"Partition":      {strconv.FormatInt(int64(kafkaMsg.Partition), 10)},
+		"Offset":         {strconv.FormatInt(kafkaMsg.Offset, 10)},
+		"Timestamp":      {kafkaMsg.Timestamp.Format(time.RFC3339)},
+		"BlockTimestamp": {kafkaMsg.BlockTimestamp.Format(time.RFC3339)},
+		"Key":            {string(kafkaMsg.Key)},
 	}
+	for _, recordHeader := range kafkaMsg.Headers {
+		header[string(recordHeader.Key)] = append(header[string(recordHeader.Key)], string(recordHeader.Value))
+	}
+	msg = easypubsub.NewMessage(
+		easypubsub.WithHeader(header),
+		easypubsub.WithBody(kafkaMsg.Value),
+		easypubsub.WithContext(ctx),
+	)
+	return msg, nil
+}
+
+func DefaultSubscriberConfig() *sarama.Config {
+	config := sarama.NewConfig()
+	config.Consumer.Return.Errors = true
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	config.ClientID = "easypubsub"
+	return config
 }

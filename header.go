@@ -48,26 +48,24 @@ func (header Header) Clone() Header {
 
 // Get obtains the values for a given key.
 func (header Header) Get(k string) []string {
-	k = strings.ToLower(k)
 	return header[k]
 }
 
 // Set sets the value of a given key with a slice of values.
-func (header Header) Set(k string, vals ...string) {
-	if len(vals) == 0 {
+func (header Header) Set(k string, values ...string) {
+	if len(values) == 0 {
 		return
 	}
-	k = strings.ToLower(k)
-	header[k] = vals
+	header[k] = values
 }
 
 // Append adds the values to key k, not overwriting what was already stored at
 // that key.
-func (header Header) Append(k string, vals ...string) {
-	if len(vals) == 0 {
+func (header Header) Append(k string, values ...string) {
+	if len(values) == 0 {
 		return
 	}
-	header[k] = append(header[k], vals...)
+	header[k] = append(header[k], values...)
 }
 
 // Join joins any number of Headers into a single Header.

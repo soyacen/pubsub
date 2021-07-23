@@ -24,7 +24,7 @@ func async() {
 		[]string{"localhost:9092"},
 		kafkapublisher.WithInterceptor(headerFunc),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
-		kafkapublisher.WithAsyncPublisherConfig(kafkapublisher.DefaultPublisherConfig()),
+		kafkapublisher.WithAsyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
 
 	for i := 0; i < 10000; i++ {
@@ -51,7 +51,7 @@ func sync() {
 		[]string{"localhost:9092"},
 		kafkapublisher.WithInterceptor(headerFunc),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
-		kafkapublisher.WithSyncPublisherConfig(kafkapublisher.DefaultPublisherConfig()),
+		kafkapublisher.WithSyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
 
 	for i := 0; i < 10000; i++ {

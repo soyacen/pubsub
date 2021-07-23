@@ -17,15 +17,15 @@ const (
 type UnmarshalMsgFunc func(topic string, data []byte) (msg *easypubsub.Message, err error)
 
 type options struct {
-	logger           easypubsub.Logger
-	unmarshalMsgFunc UnmarshalMsgFunc
-	interceptors     []easypubsub.Interceptor
-	interceptor      easypubsub.Interceptor
-	splitType        SplitType
-	blockSize        int
-	delimiter        byte
-	pollInterval     time.Duration
-	timeout          time.Duration
+	logger                  easypubsub.Logger
+	unmarshalMsgFunc        UnmarshalMsgFunc
+	interceptors            []easypubsub.Interceptor
+	interceptor             easypubsub.Interceptor
+	splitType               SplitType
+	blockSize               int
+	delimiter               byte
+	pollInterval            time.Duration
+	nackResendSleepDuration time.Duration
 }
 
 func (o *options) apply(opts ...Option) {
@@ -40,14 +40,15 @@ func defaultOptions() *options {
 		unmarshalMsgFunc: func(topic string, data []byte) (msg *easypubsub.Message, err error) {
 			msg = easypubsub.NewMessage(
 				easypubsub.WithBody(data),
-				easypubsub.WithHeader(map[string]string{"topic": topic}),
+				easypubsub.WithHeader(map[string][]string{"topic": {topic}}),
 				easypubsub.WithContext(context.Background()),
 			)
 			return msg, nil
 		},
-		splitType:    splitTypeDelimiter,
-		delimiter:    '\n',
-		pollInterval: time.Second,
+		splitType:               splitTypeDelimiter,
+		delimiter:               '\n',
+		pollInterval:            time.Second,
+		nackResendSleepDuration: time.Millisecond * 100,
 	}
 }
 
@@ -92,8 +93,8 @@ func WithPollInterval(pollInterval time.Duration) Option {
 	}
 }
 
-func WithTimeOut(timeout time.Duration) Option {
+func WithNackResendSleepDuration(interval time.Duration) Option {
 	return func(o *options) {
-		o.timeout = timeout
+		o.nackResendSleepDuration = interval
 	}
 }

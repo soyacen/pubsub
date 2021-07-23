@@ -64,10 +64,10 @@ func WithContext(ctx context.Context) MessageOption {
 	}
 }
 
-func WithHeader(header map[string]string) MessageOption {
+func WithHeader(header map[string][]string) MessageOption {
 	return func(msg *Message) {
-		for key, val := range header {
-			msg.header.Set(key, val)
+		for key, values := range header {
+			msg.header.Set(key, values...)
 		}
 	}
 }
