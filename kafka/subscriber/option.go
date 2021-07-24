@@ -22,8 +22,6 @@ type UnmarshalMsgFunc func(ctx context.Context, topic string, kafkaMsg *sarama.C
 type options struct {
 	logger                  easypubsub.Logger
 	unmarshalMsgFunc        UnmarshalMsgFunc
-	interceptors            []easypubsub.Interceptor
-	interceptor             easypubsub.Interceptor
 	consumerType            consumerType
 	consumerConfig          *sarama.Config
 	groupID                 string
@@ -55,13 +53,6 @@ func WithUnmarshalMsgFunc(unmarshalMsgFunc UnmarshalMsgFunc) Option {
 func WithLogger(logger easypubsub.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
-	}
-}
-
-func WithInterceptor(interceptors ...easypubsub.Interceptor) Option {
-	return func(o *options) {
-		o.interceptors = append(o.interceptors, interceptors...)
-		o.interceptor = easypubsub.ChainInterceptor(o.interceptors...)
 	}
 }
 

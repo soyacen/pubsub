@@ -14,7 +14,7 @@ func main() {
 }
 
 func async() {
-	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
+	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
 		msg.Header().Set("interceptor", "true")
 		msg.SetBody(append(msg.Body(), " 屌炸天"...))
 		return handler(topic, msg)
@@ -41,7 +41,7 @@ func async() {
 }
 
 func sync() {
-	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
+	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
 		msg.Header().Set("interceptor", "true")
 		msg.SetBody(append(msg.Body(), " 屌炸天"...))
 		return handler(topic, msg)

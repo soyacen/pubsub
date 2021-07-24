@@ -1,12 +1,11 @@
 package easypubsub
 
 type (
-	InterceptHandler func(topic string, msg *Message) error
-	Interceptor      func(topic string, msg *Message, handler InterceptHandler) error
+	MsgHandler  func(topic string, msg *Message) error
+	Interceptor func(topic string, msg *Message, handler MsgHandler) error
 )
 
-func DefaultInterceptHandler(topic string, msg *Message) error {
-
+func DefaultMsgHandler(topic string, msg *Message) error {
 	return nil
 }
 
@@ -17,7 +16,7 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 
 	// Dummy interceptor maintained for backward compatibility to avoid returning nil.
 	if n == 0 {
-		return func(topic string, msg *Message, handler InterceptHandler) error {
+		return func(topic string, msg *Message, handler MsgHandler) error {
 			return handler(topic, msg)
 		}
 	}
@@ -27,7 +26,7 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 	// Return a function which satisfies the interceptor interface, and which is
 	// a closure over the given list of interceptors to be chained.
-	return func(topic string, msg *Message, handler InterceptHandler) error {
+	return func(topic string, msg *Message, handler MsgHandler) error {
 		currHandler := handler
 		// Iterate backwards through all interceptors except the first (outermost).
 		// Wrap each one in a function which satisfies the handler interface, but

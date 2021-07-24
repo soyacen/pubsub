@@ -25,7 +25,7 @@ func main() {
 		panic(err)
 	}
 
-	a := func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
+	a := func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
 		msg.Header().Set("time", time.Now().Format(time.RFC3339))
 		return handler(topic, msg)
 	}

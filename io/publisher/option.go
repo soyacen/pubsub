@@ -9,8 +9,6 @@ type MarshalMsgFunc func(topic string, msg *easypubsub.Message) ([]byte, error)
 type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
-	interceptors   []easypubsub.Interceptor
-	interceptor    easypubsub.Interceptor
 }
 
 func (o *options) apply(opts ...Option) {
@@ -39,12 +37,5 @@ func WithMarshalMsgFunc(marshalMsgFunc MarshalMsgFunc) Option {
 func WithLogger(logger easypubsub.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
-	}
-}
-
-func WithInterceptor(interceptors ...easypubsub.Interceptor) Option {
-	return func(o *options) {
-		o.interceptors = append(o.interceptors, interceptors...)
-		o.interceptor = easypubsub.ChainInterceptor(o.interceptors...)
 	}
 }

@@ -37,12 +37,7 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 	if atomic.LoadInt32(&pub.close) == CLOSED {
 		return &easypubsub.PublishResult{Err: errors.New("publisher is closed")}
 	}
-	if pub.o.interceptor != nil {
-		err := pub.o.interceptor(topic, msg, easypubsub.DefaultInterceptHandler)
-		if err != nil {
-			return &easypubsub.PublishResult{Err: fmt.Errorf("msg is intercepted, %w", err)}
-		}
-	}
+
 	producerMsg, err := pub.o.marshalMsgFunc(topic, msg)
 	if err != nil {
 		return &easypubsub.PublishResult{Err: fmt.Errorf("failed marsharl msg, %w", err)}

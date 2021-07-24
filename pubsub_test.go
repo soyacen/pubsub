@@ -10,7 +10,7 @@ import (
 )
 
 func TestChainInterceptor(t *testing.T) {
-	first := func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
+	first := func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
 		require.Equal(t, "interceptor", topic)
 		require.Equal(t, []byte("interceptor"), msg.Body())
 		requireContextValue(t, msg.Context(), "origin")
@@ -21,7 +21,7 @@ func TestChainInterceptor(t *testing.T) {
 		msg.SetBody(append(msg.Body(), ",first"...))
 		return handler(newTopic, msg)
 	}
-	second := func(topic string, msg *easypubsub.Message, handler easypubsub.InterceptHandler) error {
+	second := func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
 		require.Equal(t, "interceptor:first", topic)
 		require.Equal(t, []byte("interceptor,first"), msg.Body())
 		pairs, _ := easypubsub.NewHeaderWithPairs("first", "true")

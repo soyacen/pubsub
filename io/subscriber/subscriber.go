@@ -97,13 +97,7 @@ FirstLoop:
 				sub.errC <- err
 				continue FirstLoop
 			}
-			if sub.o.interceptor != nil {
-				err := sub.o.interceptor(topic, msg, easypubsub.DefaultInterceptHandler)
-				if err != nil {
-					sub.errC <- err
-					continue FirstLoop
-				}
-			}
+
 		HandleMsg:
 			msg.Responder = easypubsub.NewResponder()
 			// send msg to msg chan

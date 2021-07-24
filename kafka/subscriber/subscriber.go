@@ -38,7 +38,7 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) 
 	sub.topic = topic
 	switch sub.o.consumerType {
 	case consumerTypeConsumerGroup:
-		//sub.consumerGroup.Consume()
+		sub.consumerGroupConsume(ctx)
 		return nil
 	case consumerTypeConsumer:
 		if err := sub.consumerConsume(ctx); err != nil {
@@ -175,13 +175,6 @@ func (sub *Subscriber) handlerMsg(ctx context.Context, kafkaMsg *sarama.Consumer
 		sub.errC <- err
 		return
 	}
-	if sub.o.interceptor != nil {
-		err := sub.o.interceptor(sub.topic, msg, easypubsub.DefaultInterceptHandler)
-		if err != nil {
-			sub.errC <- err
-			return
-		}
-	}
 
 HandleMsg:
 	msg.Responder = easypubsub.NewResponder()
@@ -202,6 +195,10 @@ HandleMsg:
 		sub.o.logger.Logf("message %s resend", msg.Id())
 		goto HandleMsg
 	}
+}
+
+func (sub *Subscriber) consumerGroupConsume(ctx context.Context) {
+
 }
 
 func New(brokers []string, opts ...Option) (easypubsub.Subscriber, error) {
