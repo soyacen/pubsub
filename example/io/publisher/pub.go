@@ -25,11 +25,6 @@ func main() {
 		panic(err)
 	}
 
-	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
-		msg.Header().Set("interceptor", "true")
-		return handler(topic, msg)
-	}
-
 	var marshalMsg = func(topic string, msg *easypubsub.Message) ([]byte, error) {
 		buf := bytes.NewBufferString(topic + "\n")
 		header, _ := json.Marshal(msg.Header())
@@ -42,7 +37,6 @@ func main() {
 	publisher := iopublisher.New(
 		f,
 		iopublisher.WithMarshalMsgFunc(marshalMsg),
-		iopublisher.WithInterceptor(headerFunc),
 	)
 
 	for i := 0; i < 100; i++ {

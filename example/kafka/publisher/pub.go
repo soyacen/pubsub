@@ -14,15 +14,8 @@ func main() {
 }
 
 func async() {
-	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
-		msg.Header().Set("interceptor", "true")
-		msg.SetBody(append(msg.Body(), " 屌炸天"...))
-		return handler(topic, msg)
-	}
-
 	publisher, err := kafkapublisher.New(
 		[]string{"localhost:9092"},
-		kafkapublisher.WithInterceptor(headerFunc),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		kafkapublisher.WithAsyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
@@ -41,15 +34,8 @@ func async() {
 }
 
 func sync() {
-	var headerFunc = func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
-		msg.Header().Set("interceptor", "true")
-		msg.SetBody(append(msg.Body(), " 屌炸天"...))
-		return handler(topic, msg)
-	}
-
 	publisher, err := kafkapublisher.New(
 		[]string{"localhost:9092"},
-		kafkapublisher.WithInterceptor(headerFunc),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		kafkapublisher.WithSyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)

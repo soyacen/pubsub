@@ -27,8 +27,8 @@ type Subscriber struct {
 	errC          chan error
 	consumerGroup sarama.ConsumerGroup
 	consumer      sarama.Consumer
-
-	topic string
+	brokers       []string
+	topic         string
 }
 
 func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) {
@@ -38,13 +38,9 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) 
 	sub.topic = topic
 	switch sub.o.consumerType {
 	case consumerTypeConsumerGroup:
-		sub.consumerGroupConsume(ctx)
-		return nil
+		return sub.consumerGroupSubscribe(ctx)
 	case consumerTypeConsumer:
-		if err := sub.consumerConsume(ctx); err != nil {
-			return err
-		}
-		return nil
+		return sub.consumerSubscribe(ctx)
 	default:
 		return fmt.Errorf("unknown consumer type %d", sub.o.consumerType)
 	}
@@ -63,12 +59,18 @@ func (sub *Subscriber) Close() error {
 		close(sub.closeC)
 		switch sub.o.consumerType {
 		case consumerTypeConsumerGroup:
+			if sub.consumerGroup != nil {
+				return nil
+			}
 			err := sub.consumerGroup.Close()
 			if err != nil {
 				return fmt.Errorf("failed close consumer group, %w", err)
 			}
 			return nil
 		case consumerTypeConsumer:
+			if sub.consumer != nil {
+				return nil
+			}
 			err := sub.consumer.Close()
 			if err != nil {
 				return fmt.Errorf("failed close consumer, %w", err)
@@ -92,25 +94,62 @@ func (sub *Subscriber) String() string {
 	}
 }
 
-func (sub *Subscriber) consume(ctx context.Context, topic string) {
-
+// ========================  consumer consume  ========================
+func (sub *Subscriber) consumerSubscribe(ctx context.Context) error {
+	sub.o.logger.Log("create consumer")
+	partitionConsumers, err := sub.createPartitionConsumer()
+	if err != nil {
+		return err
+	}
+	sub.o.logger.Log("prepare partition consumer consume")
+	exitC := sub.preparePartitionConsumerConsume(ctx, partitionConsumers)
+	go func(exitC <-chan struct{}) {
+		for {
+			select {
+			case <-sub.closeC:
+				sub.o.logger.Log("subscriber is closing, stopping consumer subscribe")
+				return
+			case <-ctx.Done():
+				sub.o.logger.Log("context is Done, stopping consumer subscribe")
+				return
+			case <-exitC:
+				sub.o.logger.Log("create consumer")
+				partitionConsumers, err := sub.createPartitionConsumer()
+				if err != nil {
+					sub.o.logger.Log(err.Error())
+					return
+				}
+				sub.o.logger.Log("prepare partition consumer consume")
+				exitC = sub.preparePartitionConsumerConsume(ctx, partitionConsumers)
+			}
+		}
+	}(exitC)
+	return nil
 }
 
-func (sub *Subscriber) consumerConsume(ctx context.Context) error {
+func (sub *Subscriber) createPartitionConsumer() ([]sarama.PartitionConsumer, error) {
+	consumer, err := sarama.NewConsumer(sub.brokers, sub.o.consumerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed new kafka %v consumer, %w", sub.brokers, err)
+	}
+	sub.consumer = consumer
 	partitions, err := sub.consumer.Partitions(sub.topic)
 	if err != nil {
-		return fmt.Errorf("failed get partitions, %w", err)
+		return nil, fmt.Errorf("failed get partitions, %w", err)
 	}
 	partitionConsumers := make([]sarama.PartitionConsumer, 0, len(partitions))
 	for _, partition := range partitions {
 		offset := sub.o.consumerConfig.Consumer.Offsets.Initial
 		partitionConsumer, err := sub.consumer.ConsumePartition(sub.topic, partition, offset)
 		if err != nil {
-			return fmt.Errorf("failed consume partition, topic: %s, partition: %d, offset: %d, %w", sub.topic, partition, offset, err)
+			return nil, fmt.Errorf("failed consume partition, topic: %s, partition: %d, offset: %d, %w", sub.topic, partition, offset, err)
 		}
 		partitionConsumers = append(partitionConsumers, partitionConsumer)
 	}
+	return partitionConsumers, nil
+}
 
+func (sub *Subscriber) preparePartitionConsumerConsume(ctx context.Context, partitionConsumers []sarama.PartitionConsumer) <-chan struct{} {
 	var wg sync.WaitGroup
 	sub.msgC = make(chan *easypubsub.Message)
 	sub.errC = make(chan error)
@@ -118,6 +157,69 @@ func (sub *Subscriber) consumerConsume(ctx context.Context) error {
 		wg.Add(1)
 		go errorutils.WithRecover(sub.recoverHandler, sub.partitionConsumerConsume(ctx, &wg, partitionConsumer))
 	}
+	exit := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(sub.msgC)
+		close(sub.errC)
+		sub.o.logger.Log("close message and error chan")
+		close(exit)
+	}()
+	return exit
+}
+
+func (sub *Subscriber) partitionConsumerConsume(ctx context.Context, wg *sync.WaitGroup, partitionConsumer sarama.PartitionConsumer) func() {
+	return func() {
+		defer wg.Done()
+		defer func() {
+			sub.o.logger.Log("close partition consumer")
+			if err := partitionConsumer.Close(); err != nil {
+				sub.errC <- fmt.Errorf("failed close partition consumer, %w", err)
+			}
+		}()
+
+		kafkaMsgC := partitionConsumer.Messages()
+		kafkaErrC := partitionConsumer.Errors()
+		for {
+			select {
+			case <-sub.closeC:
+				sub.o.logger.Log("subscriber is closing, stopping partition consumer")
+				return
+			case <-ctx.Done():
+				sub.o.logger.Log("context is Done, stopping partition consumer")
+				return
+			case err, ok := <-kafkaErrC:
+				if !ok {
+					sub.o.logger.Log("partition consumer error's channel is closed, stopping partition consumer")
+					return
+				}
+				sub.errC <- err
+			case kafkaMsg, ok := <-kafkaMsgC:
+				if !ok {
+					sub.o.logger.Log("partition consumer message's channel is closed, stopping partition consumer")
+					return
+				}
+				sub.handlerMsg(ctx, kafkaMsg, nil)
+			}
+		}
+
+	}
+}
+
+// ========================  consumerGroup consume  ========================
+func (sub *Subscriber) consumerGroupSubscribe(ctx context.Context) error {
+	consumerGroup, err := sarama.NewConsumerGroup(sub.brokers, sub.o.groupID, sub.o.consumerConfig)
+	if err != nil {
+		return fmt.Errorf("failed new kafka %v consumer group %s, %w", sub.brokers, sub.o.groupID, err)
+	}
+	sub.consumerGroup = consumerGroup
+
+	var wg sync.WaitGroup
+	sub.msgC = make(chan *easypubsub.Message)
+	sub.errC = make(chan error)
+	consumerGroupHandler := consumerGroupHandler{sub: sub, ctx: ctx}
+	wg.Add(1)
+	go errorutils.WithRecover(sub.recoverHandler, sub.doConsumerGroupConsume(ctx, &wg, &consumerGroupHandler))
 	go func() {
 		wg.Wait()
 		close(sub.msgC)
@@ -127,49 +229,73 @@ func (sub *Subscriber) consumerConsume(ctx context.Context) error {
 	return nil
 }
 
-func (sub *Subscriber) partitionConsumerConsume(ctx context.Context, wg *sync.WaitGroup, partitionConsumer sarama.PartitionConsumer) func() {
+func (sub *Subscriber) doConsumerGroupConsume(ctx context.Context, wg *sync.WaitGroup, handler *consumerGroupHandler) func() {
 	return func() {
 		defer wg.Done()
 		defer func() {
-			sub.o.logger.Log("stop partition consumer")
-			if err := partitionConsumer.Close(); err != nil {
+			sub.o.logger.Log("close consumer group")
+			if err := sub.consumerGroup.Close(); err != nil {
 				sub.errC <- fmt.Errorf("failed close partition consumer, %w", err)
 			}
 		}()
 
-		messages := partitionConsumer.Messages()
-		errors := partitionConsumer.Errors()
 		for {
 			select {
 			case <-sub.closeC:
-				sub.o.logger.Log("subscriber is closing, stopping partition consumer")
+				sub.o.logger.Log("subscriber is closing, stopping consumer group")
 				return
 			case <-ctx.Done():
-				sub.o.logger.Log("context is Done, stopping partition consumer")
+				sub.o.logger.Log("context is done, stopping partition consumer")
 				return
-			case err, ok := <-errors:
-				if !ok {
-					sub.o.logger.Log("partition consumer error's channel is closed, stopping partition consumer")
+			default:
+				err := sub.consumerGroup.Consume(ctx, []string{sub.topic}, handler)
+				if err != nil {
+					sub.errC <- fmt.Errorf("failed consume")
 					return
 				}
-				sub.errC <- err
-			case kafkaMsg, ok := <-messages:
-				if !ok {
-					sub.o.logger.Log("partition consumer message's channel is closed, stopping partition consumer")
-					return
-				}
-				sub.handlerMsg(ctx, kafkaMsg)
 			}
 		}
 
 	}
 }
 
-func (sub *Subscriber) recoverHandler(p interface{}) {
-	sub.o.logger.Logf("recover panic %v", p)
+type consumerGroupHandler struct {
+	sub *Subscriber
+	ctx context.Context
 }
 
-func (sub *Subscriber) handlerMsg(ctx context.Context, kafkaMsg *sarama.ConsumerMessage) {
+func (c *consumerGroupHandler) Setup(_ sarama.ConsumerGroupSession) error {
+	c.sub.o.logger.Log("consumer group session setup")
+	return nil
+}
+
+func (c *consumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
+	c.sub.o.logger.Log("consumer group session cleanup")
+	return nil
+}
+
+func (c *consumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	kafkaMsgC := claim.Messages()
+	for {
+		select {
+		case <-c.sub.closeC:
+			c.sub.o.logger.Log("subscriber is closing, ConsumeClaim exit")
+			return nil
+		case <-c.ctx.Done():
+			c.sub.o.logger.Log("context was done, ConsumeClaim exit")
+			return nil
+		case kafkaMsgC, ok := <-kafkaMsgC:
+			if !ok {
+				c.sub.o.logger.Log("kafka message chan was close, ConsumeClaim exit")
+				return nil
+			}
+			c.sub.handlerMsg(c.ctx, kafkaMsgC, sess)
+		}
+	}
+
+}
+
+func (sub *Subscriber) handlerMsg(ctx context.Context, kafkaMsg *sarama.ConsumerMessage, sess sarama.ConsumerGroupSession) {
 	msg, err := sub.o.unmarshalMsgFunc(ctx, sub.topic, kafkaMsg)
 	if err != nil {
 		sub.errC <- err
@@ -184,6 +310,9 @@ HandleMsg:
 	select {
 	case <-msg.Acked():
 		msg.AckResp() <- &easypubsub.Response{Result: "ok"}
+		if sess != nil {
+			sess.MarkMessage(kafkaMsg, msg.Id())
+		}
 		sub.o.logger.Logf("message %s acked", msg.Id())
 		return
 	case <-msg.Nacked():
@@ -197,30 +326,13 @@ HandleMsg:
 	}
 }
 
-func (sub *Subscriber) consumerGroupConsume(ctx context.Context) {
-
+func (sub *Subscriber) recoverHandler(p interface{}) {
+	sub.o.logger.Logf("recover panic %v", p)
 }
 
-func New(brokers []string, opts ...Option) (easypubsub.Subscriber, error) {
+func New(brokers []string, opts ...Option) easypubsub.Subscriber {
 	o := defaultOptions()
 	o.apply(opts...)
-	sub := &Subscriber{o: o, close: NORMAL, closeC: make(chan struct{})}
-	switch sub.o.consumerType {
-	case consumerTypeConsumerGroup:
-		consumerGroup, err := sarama.NewConsumerGroup(brokers, o.groupID, sub.o.consumerConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed new kafka %v consumer group %s, %w", brokers, o.groupID, err)
-		}
-		sub.consumerGroup = consumerGroup
-		return sub, nil
-	case consumerTypeConsumer:
-		consumer, err := sarama.NewConsumer(brokers, sub.o.consumerConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed new kafka %v consumer, %w", brokers, err)
-		}
-		sub.consumer = consumer
-		return sub, nil
-	default:
-		return nil, fmt.Errorf("unknown consumer type %d", sub.o.consumerType)
-	}
+	sub := &Subscriber{brokers: brokers, o: o, close: NORMAL, closeC: make(chan struct{})}
+	return sub
 }
