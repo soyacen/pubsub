@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	easypubsub "github.com/soyacen/pubsub"
 	kafkapublisher "github.com/soyacen/pubsub/kafka/publisher"
@@ -26,6 +27,7 @@ func async() {
 			panic(err)
 		}
 		fmt.Println(result.Result)
+		time.Sleep(time.Millisecond * 10)
 	}
 	err = publisher.Close()
 	if err != nil {
@@ -43,9 +45,10 @@ func sync() {
 	for i := 0; i < 10000; i++ {
 		result := publisher.Publish("awesome", easypubsub.NewMessage(easypubsub.WithBody([]byte("easypubsub 牛逼"))))
 		if result.Err != nil {
-			panic(err)
+			panic(result.Err)
 		}
 		fmt.Println(result.Result)
+		time.Sleep(time.Millisecond * 10)
 	}
 	err = publisher.Close()
 	if err != nil {

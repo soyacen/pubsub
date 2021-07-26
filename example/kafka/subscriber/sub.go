@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	//consumerGroup()
-	consumer()
+	consumerGroup()
+	//consumer()
 }
 
 func consumerGroup() {
@@ -21,7 +21,8 @@ func consumerGroup() {
 		kafkasubscriber.WithConsumerGroupConfig("awesome-2", kafkasubscriber.DefaultSubscriberConfig()),
 		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
-	defer func(subscriber easypubsub.Subscriber) {
+	go func(subscriber easypubsub.Subscriber) {
+		<-time.After(10 * time.Second)
 		err := subscriber.Close()
 		if err != nil {
 			panic(err)
@@ -76,7 +77,8 @@ func consumer() {
 		}
 	}(subscriber)
 
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	//ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx := context.Background()
 	err := subscriber.Subscribe(ctx, "awesome")
 	if err != nil {
 		panic(err)
@@ -105,7 +107,7 @@ out:
 				fmt.Println("break on error chan")
 				break out
 			}
-			fmt.Println(err)
+			fmt.Println("consume error", err)
 		}
 	}
 	fmt.Println("count: ", count)
