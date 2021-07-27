@@ -1,6 +1,8 @@
 package amqppublisher
 
 import (
+	"crypto/tls"
+	"github.com/streadway/amqp"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -10,18 +12,11 @@ import (
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error)
 
-type producerType = int
-
-const (
-	producerTypeSync  producerType = 0
-	producerTypeAsync producerType = 1
-)
-
 type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
-	producerType   producerType
-	producerConfig *sarama.Config
+	tlsConfig      *tls.Config
+	config         amqp.Config
 }
 
 func (o *options) apply(opts ...Option) {

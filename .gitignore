@@ -21,3 +21,5 @@
 /example/channel/copy/copy
 /example/kafka/publisher/publisher
 /example/kafka/subscriber/subscriber
+/example/amqp/publisher/publisher
+/example/amqp/subscriber/subscriber

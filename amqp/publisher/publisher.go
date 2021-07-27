@@ -3,12 +3,12 @@ package amqppublisher
 import (
 	"errors"
 	"fmt"
+	"github.com/streadway/amqp"
 	"sync"
 	"sync/atomic"
 
 	"github.com/Shopify/sarama"
 	"github.com/google/uuid"
-	"github.com/soyacen/goutils/errorutils"
 	"github.com/soyacen/goutils/stringutils"
 
 	easypubsub "github.com/soyacen/pubsub"
@@ -26,7 +26,7 @@ type PublishResult struct {
 
 type Publisher struct {
 	o             *options
-	brokers       []string
+	url           string
 	close         int32
 	syncProducer  sarama.SyncProducer
 	asyncProducer sarama.AsyncProducer
@@ -110,28 +110,10 @@ func (pub *Publisher) recoverHandler(p interface{}) {
 	pub.o.logger.Logf("recover panic %v", p)
 }
 
-func New(brokers []string, opts ...Option) (easypubsub.Publisher, error) {
+func New(url string, opts ...Option) (easypubsub.Publisher, error) {
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Publisher{o: o, brokers: brokers, close: NORMAL, wg: sync.WaitGroup{}}
-	switch pub.o.producerType {
-	case producerTypeSync:
-		producer, err := sarama.NewSyncProducer(pub.brokers, pub.o.producerConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed new kafka sync producer, %w", err)
-		}
-		pub.syncProducer = producer
-	case producerTypeAsync:
-		producer, err := sarama.NewAsyncProducer(pub.brokers, pub.o.producerConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed new kafka async producer, %w", err)
-		}
-		pub.asyncProducer = producer
-		pub.wg.Add(2)
-		go errorutils.WithRecover(pub.recoverHandler, pub.handleSuccesses)
-		go errorutils.WithRecover(pub.recoverHandler, pub.handleErrors)
-	default:
-		return nil, fmt.Errorf("unknown publisher type %d", o.producerType)
-	}
+	pub := &Publisher{o: o, url: url, close: NORMAL, wg: sync.WaitGroup{}}
+	amqp.Dial()
 	return pub, nil
 }
