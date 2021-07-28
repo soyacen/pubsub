@@ -1,10 +1,14 @@
 package main
 
 import (
-	"github.com/streadway/amqp"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/streadway/amqp"
+
+	easypubsub "github.com/soyacen/pubsub"
+	amqppublisher "github.com/soyacen/pubsub/amqp/publisher"
 )
 
 func main() {
@@ -12,7 +16,9 @@ func main() {
 	//new_task()
 	//faout()
 	//direct()
-	topic()
+	//topic()
+
+	publish()
 
 }
 
@@ -188,6 +194,20 @@ func topic() {
 	failOnError(err, "Failed to publish a message")
 
 	log.Printf(" [x] Sent %s", body)
+}
+
+func publish() {
+	publisher, err := amqppublisher.New(
+		"amqp://guest:guest@localhost:5672/",
+		amqppublisher.WithExchangeName("logs_topic"),
+		amqppublisher.WithExchangeKind("topic"),
+		amqppublisher.WithTransactional(true),
+	)
+	failOnError(err, "Failed new amqp publisher")
+	body := bodyFrom(os.Args)
+	result := publisher.Publish(severityFrom(os.Args), easypubsub.NewMessage(easypubsub.WithBody([]byte(body))))
+	failOnError(result.Err, "Failed to publish a message")
+	log.Printf(" [x] Sent %s, result is %s", body, result.Result)
 }
 
 func severityFrom(args []string) string {

@@ -73,7 +73,7 @@ func WithAsyncProducerConfig(config *sarama.Config) Option {
 
 func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error) {
 	kafkaHeaders := []sarama.RecordHeader{
-		{Key: []byte("Easy-Message-ID"), Value: []byte(msg.Id())},
+		{Key: []byte("Easy-PubSub-Message-ID"), Value: []byte(msg.Id())},
 	}
 	msgHeader := msg.Header()
 	for key, values := range msgHeader {
