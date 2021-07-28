@@ -23,3 +23,11 @@
 /example/kafka/subscriber/subscriber
 /example/amqp/publisher/publisher
 /example/amqp/subscriber/subscriber
+/amqp/go.sum
+/kafka/go.sum
+/amqp/example/publisher/publisher
+/io/example/publisher/publisher
+/kafka/example/publisher/publisher
+/amqp/example/subscriber/subscriber
+/io/example/subscriber/subscriber
+/kafka/example/subscriber/subscriber
