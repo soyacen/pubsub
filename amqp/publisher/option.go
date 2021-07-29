@@ -4,9 +4,9 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/soyacen/easypubsub"
 	"github.com/streadway/amqp"
 
-	easypubsub "github.com/soyacen/pubsub"
 )
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error)

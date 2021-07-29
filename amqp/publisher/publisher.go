@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/streadway/amqp"
 
-	easypubsub "github.com/soyacen/pubsub"
+	 "github.com/soyacen/easypubsub"
 )
 
 const (

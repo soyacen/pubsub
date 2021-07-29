@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/soyacen/easypubsub"
 	"github.com/soyacen/goutils/errorutils"
-
-	easypubsub "github.com/soyacen/pubsub"
 )
 
 const (

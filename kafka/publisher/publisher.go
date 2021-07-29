@@ -11,7 +11,7 @@ import (
 	"github.com/soyacen/goutils/errorutils"
 	"github.com/soyacen/goutils/stringutils"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 const (

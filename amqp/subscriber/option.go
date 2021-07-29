@@ -11,7 +11,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/streadway/amqp"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 type UnmarshalMsgFunc func(ctx context.Context, topic string, amqpMsg *amqp.Delivery) (msg *easypubsub.Message, err error)

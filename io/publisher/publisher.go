@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync/atomic"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 const (

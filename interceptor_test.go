@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 func TestChainInterceptor(t *testing.T) {

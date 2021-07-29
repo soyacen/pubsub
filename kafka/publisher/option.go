@@ -5,7 +5,7 @@ import (
 
 	"github.com/Shopify/sarama"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error)

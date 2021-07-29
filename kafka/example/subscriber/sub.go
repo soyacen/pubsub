@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	easypubsub "github.com/soyacen/pubsub"
-	kafkasubscriber "github.com/soyacen/pubsub/kafka/subscriber"
+	"github.com/soyacen/easypubsub"
+	kafkasubscriber "github.com/soyacen/easypubsub/kafka/subscriber"
 )
 
 func main() {

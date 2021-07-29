@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	easypubsub "github.com/soyacen/pubsub"
-	iopublisher "github.com/soyacen/pubsub/io/publisher"
+	"github.com/soyacen/easypubsub"
+	iopublisher "github.com/soyacen/easypubsub/io/publisher"
 )
 
 var filepath = flag.String("filepath", "", "file path")

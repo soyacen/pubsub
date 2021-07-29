@@ -11,7 +11,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/soyacen/goutils/errorutils"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 const (

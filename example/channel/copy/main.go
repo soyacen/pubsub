@@ -9,9 +9,9 @@ import (
 	"os"
 	"time"
 
-	easypubsub "github.com/soyacen/pubsub"
-	iopublisher "github.com/soyacen/pubsub/io/publisher"
-	iosubscriber "github.com/soyacen/pubsub/io/subscriber"
+	"github.com/soyacen/easypubsub"
+	iopublisher "github.com/soyacen/easypubsub/io/publisher"
+	iosubscriber "github.com/soyacen/easypubsub/io/subscriber"
 )
 
 var source = flag.String("source", "", "source file path")

@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	easypubsub "github.com/soyacen/pubsub"
-	iosubscriber "github.com/soyacen/pubsub/io/subscriber"
+	"github.com/soyacen/easypubsub"
+	iosubscriber "github.com/soyacen/easypubsub/io/subscriber"
 )
 
 var filepath = flag.String("filepath", "", "file path")

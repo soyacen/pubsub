@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/soyacen/easypubsub"
-	amqppublisher "github.com/soyacen/pubsub/amqp/publisher"
+	amqppublisher "github.com/soyacen/easypubsub/amqp/publisher"
 	"github.com/streadway/amqp"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 type SplitType = int
