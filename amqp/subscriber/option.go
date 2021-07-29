@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Shopify/sarama"
 	"github.com/streadway/amqp"
 
 	"github.com/soyacen/easypubsub"
@@ -16,8 +15,14 @@ import (
 
 type UnmarshalMsgFunc func(ctx context.Context, topic string, amqpMsg *amqp.Delivery) (msg *easypubsub.Message, err error)
 
+type QosConfig struct {
+	PrefetchCount int
+	PrefetchSize  int
+	Global        bool
+}
+
 type Exchange struct {
-	Name       string
+	NameFunc   func(topic string) string
 	Kind       string
 	Durable    bool
 	AutoDelete bool
@@ -27,7 +32,7 @@ type Exchange struct {
 }
 
 type Queue struct {
-	Name       string
+	NameFunc   func(topic string) string
 	Durable    bool
 	AutoDelete bool
 	Exclusive  bool
@@ -36,22 +41,31 @@ type Queue struct {
 }
 
 type QueueBind struct {
-	Name     string
-	key      string
-	Exchange string
-	NoWait   bool
-	Args     map[string]interface{}
+	Key    string
+	NoWait bool
+	Args   map[string]interface{}
+}
+
+type Consume struct {
+	Consumer  string
+	AutoAck   bool
+	Exclusive bool
+	NoLocal   bool
+	NoWait    bool
+	Args      map[string]interface{}
 }
 
 type options struct {
-	logger                  easypubsub.Logger
-	unmarshalMsgFunc        UnmarshalMsgFunc
-	nackResendSleepDuration time.Duration
-	tlsConfig               *tls.Config
-	amqpConfig              *amqp.Config
-	exchange                Exchange
-	queue                   Queue
-	queueBinds              []QueueBind
+	logger           easypubsub.Logger
+	unmarshalMsgFunc UnmarshalMsgFunc
+	requeueOnNack    bool
+	tlsConfig        *tls.Config
+	amqpConfig       *amqp.Config
+	qosConfig        *QosConfig
+	exchange         *Exchange
+	queue            *Queue
+	queueBinds       []*QueueBind
+	consume          *Consume
 }
 
 func (o *options) apply(opts ...Option) {
@@ -64,6 +78,36 @@ func defaultOptions() *options {
 	return &options{
 		logger:           easypubsub.DefaultLogger(),
 		unmarshalMsgFunc: DefaultUnmarshalMsgFunc,
+		requeueOnNack:    true,
+		exchange: &Exchange{
+			NameFunc: func(topic string) string {
+				return topic
+			},
+			Kind:       "topic",
+			Durable:    true,
+			AutoDelete: false,
+			Internal:   false,
+			NoWait:     false,
+			Args:       nil,
+		},
+		queue: &Queue{
+			NameFunc: func(topic string) string {
+				return topic
+			},
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  true,
+			NoWait:     false,
+			Args:       nil,
+		},
+		consume: &Consume{
+			Consumer:  "",
+			AutoAck:   false,
+			Exclusive: true,
+			NoLocal:   false,
+			NoWait:    false,
+			Args:      nil,
+		},
 	}
 }
 
@@ -81,9 +125,9 @@ func WithLogger(logger easypubsub.Logger) Option {
 	}
 }
 
-func WithNackResendSleepDuration(duration time.Duration) Option {
+func WithRequeueOnNack(enable bool) Option {
 	return func(o *options) {
-		o.nackResendSleepDuration = duration
+		o.requeueOnNack = enable
 	}
 }
 
@@ -99,36 +143,33 @@ func WithAMQPConfig(config *amqp.Config) Option {
 	}
 }
 
-func WithExchange(exchange Exchange) Option {
+func WithQosConfig(qosConfig *QosConfig) Option {
+	return func(o *options) {
+		o.qosConfig = qosConfig
+	}
+}
+
+func WithExchange(exchange *Exchange) Option {
 	return func(o *options) {
 		o.exchange = exchange
 	}
 }
 
-func WithQueue(queue Queue) Option {
+func WithQueue(queue *Queue) Option {
 	return func(o *options) {
 		o.queue = queue
 	}
 }
 
-func WithQueueBinds(queueBinds ...QueueBind) Option {
+func WithQueueBinds(queueBinds ...*QueueBind) Option {
 	return func(o *options) {
 		o.queueBinds = append(o.queueBinds, queueBinds...)
 	}
 }
 
-func WithConsumerConfig(config *sarama.Config) Option {
+func WithConsume(consume *Consume) Option {
 	return func(o *options) {
-		o.consumerType = consumerTypeConsumer
-		o.consumerConfig = config
-	}
-}
-
-func WithConsumerGroupConfig(groupID string, config *sarama.Config) Option {
-	return func(o *options) {
-		o.consumerType = consumerTypeConsumerGroup
-		o.consumerConfig = config
-		o.groupID = groupID
+		o.consume = consume
 	}
 }
 
@@ -145,13 +186,17 @@ func DefaultUnmarshalMsgFunc(ctx context.Context, topic string, amqpMsg *amqp.De
 	})
 
 	for key, val := range amqpMsg.Headers {
+		if key == easypubsub.DefaultMessageUUIDKey {
+			continue
+		}
 		addHeader(header, key, val)
 	}
-	msg = easypubsub.NewMessage(
-		easypubsub.WithHeader(header),
-		easypubsub.WithBody(amqpMsg.Body),
-		easypubsub.WithContext(ctx),
-	)
+	msgOpts := make([]easypubsub.MessageOption, 0, 4)
+	msgOpts = append(msgOpts, easypubsub.WithHeader(header), easypubsub.WithBody(amqpMsg.Body), easypubsub.WithContext(ctx))
+	if uuid, ok := amqpMsg.Headers[easypubsub.DefaultMessageUUIDKey]; ok {
+		msgOpts = append(msgOpts, easypubsub.WithId(uuid.(string)))
+	}
+	msg = easypubsub.NewMessage(msgOpts...)
 	return msg, nil
 }
 

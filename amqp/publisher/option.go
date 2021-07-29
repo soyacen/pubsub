@@ -4,9 +4,9 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/soyacen/easypubsub"
 	"github.com/streadway/amqp"
 
+	"github.com/soyacen/easypubsub"
 )
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error)
@@ -122,7 +122,7 @@ func WithMessageProperties(msgProps *MessageProperties) Option {
 	}
 }
 
-func WithPublish(publish *Publish) Option {
+func WithPublishOptions(publish *Publish) Option {
 	return func(o *options) {
 		o.publish = publish
 	}
@@ -136,7 +136,7 @@ func WithTransactional(enabled bool) Option {
 
 func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error) {
 	amqpHeader := make(amqp.Table, len(msg.Header())+1)
-	amqpHeader["Easy-PubSub-Message-ID"] = msg.Id()
+	amqpHeader[easypubsub.DefaultMessageUUIDKey] = msg.Id()
 	msgHeader := msg.Header()
 	for key, values := range msgHeader {
 		amqpHeader[key] = append([]string{}, values...)

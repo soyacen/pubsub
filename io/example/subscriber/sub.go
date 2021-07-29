@@ -27,6 +27,7 @@ func main() {
 
 	subscriber := iosubscriber.New(
 		f,
+		iosubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		iosubscriber.WithDelimiter('\n'),
 		iosubscriber.WithPollInterval(time.Second),
 	)
@@ -37,30 +38,34 @@ func main() {
 		}
 	}(subscriber)
 
+	/*	if err := subscriber.Close(); err != nil {
+		panic(err)
+	}*/
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	err = subscriber.Subscribe(ctx, "awesome")
+	msgC, errC := subscriber.Subscribe(ctx, "awesome")
 	if err != nil {
 		panic(err)
 	}
 
-	msgC := subscriber.Messages()
-	errC := subscriber.Errors()
 	count := 0
 out:
 	for {
 		select {
 		case msg, ok := <-msgC:
 			if !ok {
+				fmt.Println("msg channel exit")
 				break out
 			}
-			fmt.Println(msg.Header())
-			fmt.Println(string(msg.Body()))
+			//fmt.Println(msg.Header())
+			//fmt.Println(string(msg.Body()))
 			response := msg.Ack()
 			fmt.Println(response)
 			count++
 			fmt.Println(count)
 		case err, ok := <-errC:
 			if !ok {
+				fmt.Println("err channel exit")
 				break out
 			}
 			fmt.Println(err)

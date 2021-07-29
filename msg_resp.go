@@ -71,25 +71,43 @@ func (r *Responder) Nack() *Response {
 }
 
 func (r *Responder) Acked() <-chan struct{} {
+	if r == nil {
+		return nil
+	}
 	return r.ackC
 }
 
 func (r *Responder) AckResp() chan<- *Response {
+	if r == nil {
+		return nil
+	}
 	return r.ackRespC
 }
 
 func (r *Responder) Nacked() <-chan struct{} {
+	if r == nil {
+		return nil
+	}
 	return r.nackC
 }
 
 func (r *Responder) NackResp() chan<- *Response {
+	if r == nil {
+		return nil
+	}
 	return r.nackRespC
 }
 
 func (r *Responder) IsAcked() bool {
+	if r == nil {
+		return false
+	}
 	return atomic.CompareAndSwapInt32(&r.ackState, AckedState, AckedState)
 }
 
 func (r *Responder) IsNacked() bool {
+	if r == nil {
+		return false
+	}
 	return atomic.CompareAndSwapInt32(&r.ackState, NackedState, NackedState)
 }

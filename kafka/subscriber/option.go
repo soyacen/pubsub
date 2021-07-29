@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+
 	"github.com/soyacen/easypubsub"
 )
 
@@ -35,9 +36,10 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:           easypubsub.DefaultLogger(),
-		unmarshalMsgFunc: DefaultUnmarshalMsgFunc,
-		consumerType:     consumerTypeConsumer,
+		logger:                  easypubsub.DefaultLogger(),
+		unmarshalMsgFunc:        DefaultUnmarshalMsgFunc,
+		consumerType:            consumerTypeConsumer,
+		nackResendSleepDuration: 100 * time.Millisecond,
 	}
 }
 

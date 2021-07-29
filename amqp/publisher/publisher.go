@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/streadway/amqp"
 
-	 "github.com/soyacen/easypubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 const (
@@ -98,19 +98,20 @@ func (pub *Publisher) openConnection() error {
 			return fmt.Errorf("failed dial %s config %v, %w", pub.url, pub.o.amqpConfig, err)
 		}
 		pub.conn = conn
+		return nil
 	} else if pub.o.tlsConfig != nil {
 		conn, err := amqp.DialTLS(pub.url, pub.o.tlsConfig)
 		if err != nil {
 			return fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
 		}
 		pub.conn = conn
-	} else {
-		conn, err := amqp.Dial(pub.url)
-		if err != nil {
-			return fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
-		}
-		pub.conn = conn
+		return nil
 	}
+	conn, err := amqp.Dial(pub.url)
+	if err != nil {
+		return fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
+	}
+	pub.conn = conn
 	return nil
 }
 

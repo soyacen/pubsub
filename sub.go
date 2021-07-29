@@ -8,9 +8,7 @@ import (
 
 type (
 	Subscriber interface {
-		Subscribe(ctx context.Context, topic string) (err error)
-		Messages() (msgC <-chan *Message)
-		Errors() (errC <-chan error)
+		Subscribe(ctx context.Context, topic string) (<-chan *Message, <-chan error)
 		io.Closer
 		fmt.Stringer
 	}

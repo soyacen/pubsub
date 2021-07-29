@@ -50,11 +50,12 @@ func (c *Channel) Flow(ctx context.Context) error {
 		return errors.New("channel is closed")
 	}
 	c.o.logger.Logf("start subscribe %s", c.source.topic)
-	err := c.source.subscriber.Subscribe(ctx, c.source.topic)
-	if err != nil {
-		return err
-	}
-
+	msgC, errC := c.source.subscriber.Subscribe(ctx, c.source.topic)
+	//if err != nil {
+	//	return err
+	//}
+	<-msgC
+	<-errC
 	c.outMsgC = make(chan *Message)
 	c.errC = make(chan error)
 	c.wg = &sync.WaitGroup{}
@@ -88,7 +89,7 @@ func (c *Channel) Close() error {
 func (c *Channel) flowInto() {
 	defer c.wg.Done()
 	defer close(c.outMsgC)
-	inMsgC := c.source.subscriber.Messages()
+	/*inMsgC := c.source.subscriber.Messages()
 	errC := c.source.subscriber.Errors()
 	for {
 		select {
@@ -111,7 +112,7 @@ func (c *Channel) flowInto() {
 			}
 			c.errC <- err
 		}
-	}
+	}*/
 }
 
 func (c *Channel) outFlow() {

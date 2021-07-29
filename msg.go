@@ -6,6 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const DefaultMessageUUIDKey = "Easy-PubSub-Message-UUID"
+
 type Message struct {
 	id     string
 	ctx    context.Context
@@ -61,6 +63,12 @@ type MessageOption func(msg *Message)
 func WithContext(ctx context.Context) MessageOption {
 	return func(msg *Message) {
 		msg.ctx = ctx
+	}
+}
+
+func WithId(id string) MessageOption {
+	return func(msg *Message) {
+		msg.id = id
 	}
 }
 

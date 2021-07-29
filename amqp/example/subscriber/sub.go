@@ -2,10 +2,16 @@ package main
 
 import (
 	"bytes"
-	"github.com/streadway/amqp"
+	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
+
+	"github.com/streadway/amqp"
+
+	"github.com/soyacen/easypubsub"
+	amqpsubscriber "github.com/soyacen/easypubsub/amqp/subscriber"
 )
 
 func main() {
@@ -13,7 +19,8 @@ func main() {
 	//worker()
 	//fanout()
 	//direct()
-	topic()
+	//topic()
+	sub()
 }
 
 func hello_world() {
@@ -307,6 +314,72 @@ func topic() {
 
 	log.Printf(" [*] Waiting for logs. To exit press CTRL+C")
 	<-forever
+}
+
+func sub() {
+
+	var queueBinds []*amqpsubscriber.QueueBind
+	for _, key := range os.Args[1:] {
+		queueBinds = append(queueBinds, &amqpsubscriber.QueueBind{
+			Key:    key,
+			NoWait: false,
+			Args:   nil,
+		})
+	}
+
+	subscriber := amqpsubscriber.New("amqp://guest:guest@localhost:5672/",
+		amqpsubscriber.WithExchange(&amqpsubscriber.Exchange{
+			NameFunc: func(topic string) string {
+				return "logs_topic"
+			},
+			Kind:    "topic",
+			Durable: true,
+		}),
+		amqpsubscriber.WithQueue(&amqpsubscriber.Queue{
+			NameFunc: func(topic string) string {
+				return ""
+			},
+			Durable:   true,
+			Exclusive: true,
+		}),
+		amqpsubscriber.WithQueueBinds(queueBinds...),
+		amqpsubscriber.WithConsume(&amqpsubscriber.Consume{}),
+	)
+
+	err := subscriber.Subscribe(context.Background(), "")
+	failOnError(err, "Failed to subscribe")
+
+	defer func(subscriber easypubsub.Subscriber) {
+		err := subscriber.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(subscriber)
+
+	errC := subscriber.Errors()
+	msgC := subscriber.Messages()
+out:
+	for {
+		select {
+		case msg, ok := <-msgC:
+			if !ok {
+				fmt.Println("break on msg chan")
+				break out
+			}
+			fmt.Println(msg.Header())
+			fmt.Println(string(msg.Body()))
+			response := msg.Ack()
+			fmt.Println(response)
+			<-time.After(time.Millisecond + 100)
+		case err, ok := <-errC:
+			if !ok {
+				fmt.Println("break on error chan")
+				break out
+			}
+			fmt.Println("consume error", err)
+		}
+	}
+
 }
 
 func failOnError(err error, msg string) {

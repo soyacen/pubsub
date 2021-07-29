@@ -22,8 +22,6 @@ type Subscriber struct {
 	o             *options
 	close         int32
 	closeC        chan struct{}
-	msgC          chan *easypubsub.Message
-	errC          chan error
 	consumerGroup sarama.ConsumerGroup
 	consumer      sarama.Consumer
 	brokers       []string
@@ -43,14 +41,6 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) 
 	default:
 		return fmt.Errorf("unknown consumer type %d", sub.o.consumerType)
 	}
-}
-
-func (sub *Subscriber) Messages() (msgC <-chan *easypubsub.Message) {
-	return sub.msgC
-}
-
-func (sub *Subscriber) Errors() (errC <-chan error) {
-	return sub.errC
 }
 
 func (sub *Subscriber) Close() error {

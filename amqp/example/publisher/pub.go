@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/soyacen/easypubsub"
-	amqppublisher "github.com/soyacen/easypubsub/amqp/publisher"
 	"github.com/streadway/amqp"
+
+	amqppublisher "github.com/soyacen/easypubsub/amqp/publisher"
 )
 
 func main() {
@@ -198,8 +199,7 @@ func topic() {
 func publish() {
 	publisher, err := amqppublisher.New(
 		"amqp://guest:guest@localhost:5672/",
-		amqppublisher.WithExchangeName("logs_topic"),
-		amqppublisher.WithExchangeKind("topic"),
+		amqppublisher.WithExchange(&amqppublisher.Exchange{Name: "logs_topic", Kind: "topic"}),
 		amqppublisher.WithTransactional(true),
 	)
 	failOnError(err, "Failed new amqp publisher")
