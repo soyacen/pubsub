@@ -8,8 +8,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/streadway/amqp"
 
-	"github.com/soyacen/goutils/stringutils"
-
 	easypubsub "github.com/soyacen/pubsub"
 )
 
@@ -35,20 +33,9 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) *easypubsub
 	if atomic.LoadInt32(&pub.close) == CLOSED {
 		return &easypubsub.PublishResult{Err: errors.New("publisher is closed")}
 	}
-	amqpMsg, err := pub.o.marshalMsgFunc(topic, msg)
+	amqpMsg, err := pub.o.marshalMsgFunc(topic, msg, pub.o.msgProps)
 	if err != nil {
 		return &easypubsub.PublishResult{Err: fmt.Errorf("failed marsharl msg, %w", err)}
-	}
-	if stringutils.IsNotBlank(pub.o.contentType) {
-		amqpMsg.ContentType = pub.o.contentType
-	}
-	if stringutils.IsNotBlank(pub.o.contentEncoding) {
-		amqpMsg.ContentEncoding = pub.o.contentEncoding
-	}
-	if pub.o.persistentDeliveryMode {
-		amqpMsg.DeliveryMode = amqp.Persistent
-	} else {
-		amqpMsg.DeliveryMode = amqp.Transient
 	}
 
 	pub.o.logger.Logf("send message %s", msg.Id())
@@ -60,8 +47,8 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) *easypubsub
 	}
 
 	if err := pub.channel.Publish(
-		pub.o.exchangeName, topic,
-		pub.o.publishMandatory, pub.o.publishImmediate, *amqpMsg); err != nil {
+		pub.o.exchange.Name, topic,
+		pub.o.publish.Mandatory, pub.o.publish.Immediate, *amqpMsg); err != nil {
 		return &easypubsub.PublishResult{Err: fmt.Errorf("failed send message, %w", err)}
 	}
 	return &easypubsub.PublishResult{Result: "ok"}
@@ -71,8 +58,8 @@ func (pub *Publisher) publishWithTransaction(topic string, amqpMsg *amqp.Publish
 	if err := pub.channel.Tx(); err != nil {
 		return fmt.Errorf("failed start transaction, %w", err)
 	}
-	if err := pub.channel.Publish(pub.o.exchangeName, topic,
-		pub.o.publishMandatory, pub.o.publishImmediate, *amqpMsg); err != nil {
+	if err := pub.channel.Publish(pub.o.exchange.Name, topic,
+		pub.o.publish.Mandatory, pub.o.publish.Immediate, *amqpMsg); err != nil {
 		if e := pub.channel.TxRollback(); e != nil {
 			return multierror.Append(nil,
 				fmt.Errorf("failed send message, %w", err),
@@ -141,13 +128,13 @@ func New(url string, opts ...Option) (easypubsub.Publisher, error) {
 	pub.channel = channel
 
 	err = channel.ExchangeDeclare(
-		pub.o.exchangeName,       // name
-		pub.o.exchangeKind,       // type
-		pub.o.exchangeDurable,    // durable
-		pub.o.exchangeAutoDelete, // auto-deleted
-		pub.o.exchangeInternal,   // internal
-		pub.o.exchangeNoWait,     // no-wait
-		pub.o.exchangeArgs,       // arguments
+		pub.o.exchange.Name,       // name
+		pub.o.exchange.Kind,       // type
+		pub.o.exchange.Durable,    // durable
+		pub.o.exchange.AutoDelete, // auto-deleted
+		pub.o.exchange.Internal,   // internal
+		pub.o.exchange.NoWait,     // no-wait
+		pub.o.exchange.Args,       // arguments
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed declare exchange, %w", err)

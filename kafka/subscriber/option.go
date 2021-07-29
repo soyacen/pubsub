@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 )
 
 type consumerType = int

@@ -2,32 +2,54 @@ package amqppublisher
 
 import (
 	"crypto/tls"
+	"time"
 
 	"github.com/streadway/amqp"
 
 	easypubsub "github.com/soyacen/pubsub"
 )
 
-type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*amqp.Publishing, error)
+type MarshalMsgFunc func(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error)
+
+type Exchange struct {
+	Name       string
+	Kind       string
+	Durable    bool
+	AutoDelete bool
+	Internal   bool
+	NoWait     bool
+	Args       map[string]interface{}
+}
+
+type MessageProperties struct {
+	ContentType     string    // MIME content type
+	ContentEncoding string    // MIME content encoding
+	DeliveryMode    uint8     // Transient (0 or 1) or Persistent (2)
+	Priority        uint8     // 0 to 9
+	CorrelationId   string    // correlation identifier
+	ReplyTo         string    // address to to reply to (ex: RPC)
+	Expiration      string    // message expiration spec
+	MessageId       string    // message identifier
+	Timestamp       time.Time // message timestamp
+	Type            string    // message type name
+	UserId          string    // creating user id - ex: "guest"
+	AppId           string    // creating application id
+}
+
+type Publish struct {
+	Mandatory bool
+	Immediate bool
+}
 
 type options struct {
-	logger                 easypubsub.Logger
-	marshalMsgFunc         MarshalMsgFunc
-	tlsConfig              *tls.Config
-	amqpConfig             *amqp.Config
-	contentType            string
-	contentEncoding        string
-	persistentDeliveryMode bool
-	exchangeName           string
-	exchangeKind           string
-	exchangeDurable        bool
-	exchangeAutoDelete     bool
-	exchangeInternal       bool
-	exchangeNoWait         bool
-	exchangeArgs           map[string]interface{}
-	publishMandatory       bool
-	publishImmediate       bool
-	transactional          bool
+	logger         easypubsub.Logger
+	marshalMsgFunc MarshalMsgFunc
+	tlsConfig      *tls.Config
+	amqpConfig     *amqp.Config
+	exchange       *Exchange
+	msgProps       *MessageProperties
+	publish        *Publish
+	transactional  bool
 }
 
 func (o *options) apply(opts ...Option) {
@@ -38,21 +60,27 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:                 easypubsub.DefaultLogger(),
-		marshalMsgFunc:         DefaultMarshalMsgFunc,
-		contentType:            "text/plain",
-		contentEncoding:        "",
-		persistentDeliveryMode: true,
-		exchangeName:           "",
-		exchangeKind:           "topic",
-		exchangeDurable:        true,
-		exchangeAutoDelete:     false,
-		exchangeInternal:       false,
-		exchangeNoWait:         false,
-		exchangeArgs:           nil,
-		publishMandatory:       false,
-		publishImmediate:       false,
-		transactional:          false,
+		logger:         easypubsub.DefaultLogger(),
+		marshalMsgFunc: DefaultMarshalMsgFunc,
+		msgProps: &MessageProperties{
+			ContentType:     "text/plain",
+			ContentEncoding: "",
+			DeliveryMode:    2,
+		},
+		exchange: &Exchange{
+			Name:       "",
+			Kind:       "topic",
+			Durable:    true,
+			AutoDelete: false,
+			Internal:   false,
+			NoWait:     false,
+			Args:       nil,
+		},
+		publish: &Publish{
+			Mandatory: false,
+			Immediate: false,
+		},
+		transactional: false,
 	}
 }
 
@@ -82,69 +110,21 @@ func WithAMQPConfig(config *amqp.Config) Option {
 	}
 }
 
-func WithExchangeName(name string) Option {
+func WithExchange(exchange *Exchange) Option {
 	return func(o *options) {
-		o.exchangeName = name
-	}
-}
-func WithExchangeKind(kind string) Option {
-	return func(o *options) {
-		o.exchangeKind = kind
-	}
-}
-func WithExchangeDurable(durable bool) Option {
-	return func(o *options) {
-		o.exchangeDurable = durable
-	}
-}
-func WithExchangeAutoDelete(autoDelete bool) Option {
-	return func(o *options) {
-		o.exchangeAutoDelete = autoDelete
-	}
-}
-func WithExchangeInternal(internal bool) Option {
-	return func(o *options) {
-		o.exchangeInternal = internal
-	}
-}
-func WithExchangeNoWait(noWait bool) Option {
-	return func(o *options) {
-		o.exchangeNoWait = noWait
-	}
-}
-func WithExchangeArgs(args map[string]interface{}) Option {
-	return func(o *options) {
-		o.exchangeArgs = args
+		o.exchange = exchange
 	}
 }
 
-func WithPublishMandatory(mandatory bool) Option {
+func WithMessageProperties(msgProps *MessageProperties) Option {
 	return func(o *options) {
-		o.publishMandatory = mandatory
+		o.msgProps = msgProps
 	}
 }
 
-func WithPublishImmediate(immediate bool) Option {
+func WithPublish(publish *Publish) Option {
 	return func(o *options) {
-		o.publishImmediate = immediate
-	}
-}
-
-func WithContentEncoding(contentEncoding string) Option {
-	return func(o *options) {
-		o.contentEncoding = contentEncoding
-	}
-}
-
-func WithContentType(contentType string) Option {
-	return func(o *options) {
-		o.contentType = contentType
-	}
-}
-
-func WithPersistentDeliveryMode(enabled bool) Option {
-	return func(o *options) {
-		o.persistentDeliveryMode = enabled
+		o.publish = publish
 	}
 }
 
@@ -154,7 +134,7 @@ func WithTransactional(enabled bool) Option {
 	}
 }
 
-func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message) (*amqp.Publishing, error) {
+func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error) {
 	amqpHeader := make(amqp.Table, len(msg.Header())+1)
 	amqpHeader["Easy-PubSub-Message-ID"] = msg.Id()
 	msgHeader := msg.Header()
@@ -162,8 +142,20 @@ func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message) (*amqp.Publish
 		amqpHeader[key] = append([]string{}, values...)
 	}
 	pMsg := &amqp.Publishing{
-		Headers: amqpHeader,
-		Body:    msg.Body(),
+		Headers:         amqpHeader,
+		ContentType:     msgProps.ContentType,
+		ContentEncoding: msgProps.ContentEncoding,
+		DeliveryMode:    msgProps.DeliveryMode,
+		Priority:        msgProps.Priority,
+		CorrelationId:   msgProps.CorrelationId,
+		ReplyTo:         msgProps.ReplyTo,
+		Expiration:      msgProps.Expiration,
+		MessageId:       msgProps.MessageId,
+		Timestamp:       msgProps.Timestamp,
+		Type:            msgProps.Type,
+		UserId:          msgProps.UserId,
+		AppId:           msgProps.AppId,
+		Body:            msg.Body(),
 	}
 	return pMsg, nil
 }

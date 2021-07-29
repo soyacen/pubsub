@@ -5,10 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/streadway/amqp"
-
-	easypubsub "github.com/soyacen/pubsub"
+	"github.com/soyacen/easypubsub"
 	amqppublisher "github.com/soyacen/pubsub/amqp/publisher"
+	"github.com/streadway/amqp"
 )
 
 func main() {
