@@ -48,7 +48,6 @@ type QueueBind struct {
 
 type Consume struct {
 	Consumer  string
-	AutoAck   bool
 	Exclusive bool
 	NoLocal   bool
 	NoWait    bool
@@ -102,7 +101,6 @@ func defaultOptions() *options {
 		},
 		consume: &Consume{
 			Consumer:  "",
-			AutoAck:   false,
 			Exclusive: true,
 			NoLocal:   false,
 			NoWait:    false,

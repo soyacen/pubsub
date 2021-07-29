@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	consumerGroup()
-	//consumer()
+	//consumerGroup()
+	consumer()
 }
 
 func consumerGroup() {
@@ -30,13 +30,7 @@ func consumerGroup() {
 	}(subscriber)
 
 	ctx, _ := context.WithTimeout(context.Background(), 25*time.Second)
-	err := subscriber.Subscribe(ctx, "awesome")
-	if err != nil {
-		panic(err)
-	}
-
-	msgC := subscriber.Messages()
-	errC := subscriber.Errors()
+	msgC, errC := subscriber.Subscribe(ctx, "awesome")
 	count := 0
 out:
 	for {
@@ -79,13 +73,7 @@ func consumer() {
 
 	//ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx := context.Background()
-	err := subscriber.Subscribe(ctx, "awesome")
-	if err != nil {
-		panic(err)
-	}
-
-	msgC := subscriber.Messages()
-	errC := subscriber.Errors()
+	msgC, errC := subscriber.Subscribe(ctx, "awesome")
 	count := 0
 out:
 	for {

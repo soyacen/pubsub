@@ -42,7 +42,9 @@ func sync() {
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		kafkapublisher.WithSyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
-
+	if err != nil {
+		panic(err)
+	}
 	for i := 0; i < 10000; i++ {
 		result := publisher.Publish("awesome", easypubsub.NewMessage(easypubsub.WithBody([]byte("easypubsub 牛逼"))))
 		if result.Err != nil {

@@ -20,24 +20,31 @@ const (
 
 type Subscriber struct {
 	o            *options
-	close        int32
+	url          string
+	topic        string
+	closed       int32
 	closeC       chan struct{}
 	msgC         chan *easypubsub.Message
 	errC         chan error
-	topic        string
-	url          string
 	conn         *amqp.Connection
 	channel      *amqp.Channel
 	notifyCloseC chan *amqp.Error
 	deliveryC    <-chan amqp.Delivery
 }
 
-func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (err error) {
-	if atomic.LoadInt32(&sub.close) == CLOSED {
-		return errors.New("subscriber is closed")
+func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *easypubsub.Message, <-chan error) {
+	sub.errC = make(chan error)
+	sub.msgC = make(chan *easypubsub.Message)
+	if atomic.LoadInt32(&sub.closed) == CLOSED {
+		go sub.closeErrCAndMsgC(errors.New("subscriber is closed"))
+		return sub.msgC, sub.errC
 	}
 	sub.topic = topic
-	return sub.subscribe(ctx)
+	if err := sub.subscribe(ctx); err != nil {
+		go sub.closeErrCAndMsgC(err)
+	}
+	return sub.msgC, sub.errC
+
 }
 
 func (sub *Subscriber) Messages() (msgC <-chan *easypubsub.Message) {
@@ -49,7 +56,7 @@ func (sub *Subscriber) Errors() (errC <-chan error) {
 }
 
 func (sub *Subscriber) Close() error {
-	if atomic.CompareAndSwapInt32(&sub.close, NORMAL, CLOSED) {
+	if atomic.CompareAndSwapInt32(&sub.closed, NORMAL, CLOSED) {
 		close(sub.closeC)
 		err := sub.conn.Close()
 		if err != nil {
@@ -61,7 +68,7 @@ func (sub *Subscriber) Close() error {
 }
 
 func (sub *Subscriber) String() string {
-	return "amqpSubscriber"
+	return "AMQPSubscriber"
 }
 
 // ========================  consumer consume  ========================
@@ -179,7 +186,7 @@ func (sub *Subscriber) prepareConsume() error {
 	deliveryC, err := sub.channel.Consume(
 		queueName,
 		sub.o.consume.Consumer,
-		sub.o.consume.AutoAck,
+		false,
 		sub.o.consume.Exclusive,
 		sub.o.consume.NoLocal,
 		sub.o.consume.NoWait,
@@ -250,11 +257,6 @@ func (sub *Subscriber) handlerMsg(ctx context.Context, amqpMsg *amqp.Delivery) {
 		return
 	}
 
-	if sub.o.consume.AutoAck {
-		sub.msgC <- msg
-		return
-	}
-
 	msg.Responder = easypubsub.NewResponder()
 	// send msg to msg chan
 	sub.msgC <- msg
@@ -281,6 +283,14 @@ func (sub *Subscriber) handlerMsg(ctx context.Context, amqpMsg *amqp.Delivery) {
 
 func (sub *Subscriber) recoverHandler(p interface{}) {
 	sub.o.logger.Logf("recover panic %v", p)
+}
+
+func (sub *Subscriber) closeErrCAndMsgC(err error) {
+	if err != nil {
+		sub.errC <- err
+	}
+	close(sub.errC)
+	close(sub.msgC)
 }
 
 func New(url string, opts ...Option) easypubsub.Subscriber {

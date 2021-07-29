@@ -23,17 +23,21 @@ type Subscriber struct {
 	readCloser io.ReadCloser
 	closed     int32
 	closeC     chan struct{}
+	topic      string
+	errC       chan error
+	msgC       chan *easypubsub.Message
 }
 
 func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *easypubsub.Message, <-chan error) {
-	errC := make(chan error)
-	msgC := make(chan *easypubsub.Message)
+	sub.errC = make(chan error)
+	sub.msgC = make(chan *easypubsub.Message)
 	if atomic.LoadInt32(&sub.closed) == CLOSED {
-		go func() { defer close(errC); defer close(msgC); errC <- errors.New("subscriber is closed") }()
-		return msgC, errC
+		go sub.closeErrCAndMsgC(errors.New("subscriber is closed"))
+		return sub.msgC, sub.errC
 	}
-	go sub.subscribe(ctx, topic, msgC, errC)
-	return msgC, errC
+	sub.topic = topic
+	go sub.subscribe(ctx)
+	return sub.msgC, sub.errC
 }
 
 func (sub *Subscriber) Close() error {
@@ -52,9 +56,8 @@ func (sub *Subscriber) String() string {
 	return "IOSubscriber"
 }
 
-func (sub *Subscriber) subscribe(ctx context.Context, topic string, msgC chan *easypubsub.Message, errC chan error) {
-	defer close(errC)
-	defer close(msgC)
+func (sub *Subscriber) subscribe(ctx context.Context) {
+	defer sub.closeErrCAndMsgC(nil)
 	sub.o.logger.Logf("start subscribe")
 	var reader *bufio.Reader
 	if sub.o.splitType == splitTypeBlock {
@@ -81,7 +84,7 @@ FirstLoop:
 					time.Sleep(sub.o.pollInterval)
 					continue FirstLoop
 				} else {
-					errC <- err
+					sub.errC <- err
 					return
 				}
 			}
@@ -91,15 +94,15 @@ FirstLoop:
 				continue FirstLoop
 			}
 
-			msg, err := sub.o.unmarshalMsgFunc(topic, block)
+			msg, err := sub.o.unmarshalMsgFunc(sub.topic, block)
 			if err != nil {
-				errC <- err
+				sub.errC <- err
 				continue FirstLoop
 			}
 
 		HandleMsg:
 			msg.Responder = easypubsub.NewResponder()
-			msgC <- msg
+			sub.msgC <- msg
 			sub.o.logger.Logf("message %s sent, wait ack...", msg.Id())
 			select {
 			case <-msg.Acked():
@@ -131,6 +134,14 @@ func (sub *Subscriber) read(reader *bufio.Reader) ([]byte, error) {
 		block = block[:n]
 	}
 	return block, err
+}
+
+func (sub *Subscriber) closeErrCAndMsgC(err error) {
+	if err != nil {
+		sub.errC <- err
+	}
+	close(sub.errC)
+	close(sub.msgC)
 }
 
 func New(reader io.Reader, opts ...Option) easypubsub.Subscriber {
