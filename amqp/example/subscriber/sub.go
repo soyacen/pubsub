@@ -317,7 +317,6 @@ func topic() {
 }
 
 func sub() {
-
 	var queueBinds []*amqpsubscriber.QueueBind
 	for _, key := range os.Args[1:] {
 		queueBinds = append(queueBinds, &amqpsubscriber.QueueBind{
@@ -327,7 +326,9 @@ func sub() {
 		})
 	}
 
-	subscriber := amqpsubscriber.New("amqp://guest:guest@localhost:5672/",
+	subscriber := amqpsubscriber.New(
+		"amqp://guest:guest@localhost:5672/",
+		amqpsubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		amqpsubscriber.WithExchange(&amqpsubscriber.Exchange{
 			NameFunc: func(topic string) string {
 				return "logs_topic"
@@ -345,10 +346,6 @@ func sub() {
 		amqpsubscriber.WithQueueBinds(queueBinds...),
 		amqpsubscriber.WithConsume(&amqpsubscriber.Consume{}),
 	)
-
-	err := subscriber.Subscribe(context.Background(), "")
-	failOnError(err, "Failed to subscribe")
-
 	defer func(subscriber easypubsub.Subscriber) {
 		err := subscriber.Close()
 		if err != nil {
@@ -356,8 +353,8 @@ func sub() {
 		}
 	}(subscriber)
 
-	errC := subscriber.Errors()
-	msgC := subscriber.Messages()
+	msgC, errC := subscriber.Subscribe(context.Background(), "")
+
 out:
 	for {
 		select {

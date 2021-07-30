@@ -19,17 +19,16 @@ const (
 )
 
 type Subscriber struct {
-	o            *options
-	url          string
-	topic        string
-	closed       int32
-	closeC       chan struct{}
-	msgC         chan *easypubsub.Message
-	errC         chan error
-	conn         *amqp.Connection
-	channel      *amqp.Channel
-	notifyCloseC chan *amqp.Error
-	deliveryC    <-chan amqp.Delivery
+	o         *options
+	url       string
+	topic     string
+	closed    int32
+	closeC    chan struct{}
+	msgC      chan *easypubsub.Message
+	errC      chan error
+	conn      *amqp.Connection
+	channel   *amqp.Channel
+	queueName string
 }
 
 func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *easypubsub.Message, <-chan error) {
@@ -76,32 +75,8 @@ func (sub *Subscriber) subscribe(ctx context.Context) error {
 	if err := sub.openConnection(); err != nil {
 		return err
 	}
-	if err := sub.prepareConsume(); err != nil {
-		return err
-	}
-	exitC := sub.startConsume(ctx)
-	go func(exitC <-chan struct{}) {
-		for {
-			select {
-			case <-sub.closeC:
-				sub.o.logger.Log("subscriber is closing, stopping subscribe")
-				return
-			case <-ctx.Done():
-				sub.o.logger.Log("context is Done, stopping subscribe")
-				return
-			case <-exitC:
-				if err := sub.openConnection(); err != nil {
-					sub.o.logger.Log(err)
-					return
-				}
-				if err := sub.prepareConsume(); err != nil {
-					sub.o.logger.Log(err)
-					return
-				}
-				exitC = sub.startConsume(ctx)
-			}
-		}
-	}(exitC)
+	exitC := sub.waitConsume(ctx)
+	go errorutils.WithRecover(sub.recoverHandler, sub.consumeDaemon(ctx, exitC))
 	return nil
 }
 
@@ -135,16 +110,14 @@ func (sub *Subscriber) openConnection() error {
 
 	qosConfig := sub.o.qosConfig
 	if qosConfig != nil {
-		if err := sub.channel.Qos(qosConfig.PrefetchCount, qosConfig.PrefetchSize, qosConfig.Global); err != nil {
+		err := sub.channel.Qos(qosConfig.PrefetchCount, qosConfig.PrefetchSize, qosConfig.Global)
+		if err != nil {
 			return fmt.Errorf("failed to set QoS, %w", err)
 		}
 	}
-	return nil
-}
 
-func (sub *Subscriber) prepareConsume() error {
-	sub.o.logger.Log("declare exchange")
 	exchangeName := sub.o.exchange.NameFunc(sub.topic)
+	sub.o.logger.Logf("declare exchange %s", exchangeName)
 	if err := sub.channel.ExchangeDeclare(
 		exchangeName, sub.o.exchange.Kind, sub.o.exchange.Durable,
 		sub.o.exchange.AutoDelete, sub.o.exchange.Internal, sub.o.exchange.NoWait,
@@ -152,10 +125,10 @@ func (sub *Subscriber) prepareConsume() error {
 		return fmt.Errorf("failed to declare an exchange, %w", err)
 	}
 
-	sub.o.logger.Log("declare queue")
-	queueName := sub.o.queue.NameFunc(sub.topic)
+	sub.queueName = sub.o.queue.NameFunc(sub.topic)
+	sub.o.logger.Logf("declare queue %s", sub.queueName)
 	queue, err := sub.channel.QueueDeclare(
-		queueName,
+		sub.queueName,
 		sub.o.queue.Durable,
 		sub.o.queue.AutoDelete,
 		sub.o.queue.Exclusive,
@@ -165,12 +138,13 @@ func (sub *Subscriber) prepareConsume() error {
 	if err != nil {
 		return fmt.Errorf("failed to declare an queue, %w", err)
 	}
-	queueName = queue.Name
+	sub.queueName = queue.Name
+	sub.o.logger.Logf("actual queue name is %s", sub.queueName)
 
 	for _, queueBind := range sub.o.queueBinds {
-		sub.o.logger.Logf("bind queue %s to exchange %s with key %s", queueName, exchangeName, queueBind.Key)
+		sub.o.logger.Logf("bind queue %s to exchange %s with key %s", sub.queueName, exchangeName, queueBind.Key)
 		err = sub.channel.QueueBind(
-			queueName,
+			sub.queueName,
 			queueBind.Key,
 			exchangeName,
 			queueBind.NoWait,
@@ -180,44 +154,45 @@ func (sub *Subscriber) prepareConsume() error {
 			return fmt.Errorf("failed to bind a queue, %w", err)
 		}
 	}
-	sub.notifyCloseC = sub.channel.NotifyClose(make(chan *amqp.Error))
-
-	sub.o.logger.Logf("prepare consume queue %s", queueName)
-	deliveryC, err := sub.channel.Consume(
-		queueName,
-		sub.o.consume.Consumer,
-		false,
-		sub.o.consume.Exclusive,
-		sub.o.consume.NoLocal,
-		sub.o.consume.NoWait,
-		sub.o.consume.Args,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to consume queue %s, %w", queueName, err)
-	}
-	sub.deliveryC = deliveryC
 	return nil
 }
 
-func (sub *Subscriber) startConsume(ctx context.Context) <-chan struct{} {
-	sub.o.logger.Log("start consume")
+func (sub *Subscriber) waitConsume(ctx context.Context) <-chan struct{} {
 	var wg sync.WaitGroup
-	sub.msgC = make(chan *easypubsub.Message)
-	sub.errC = make(chan error)
 	wg.Add(1)
-	go errorutils.WithRecover(sub.recoverHandler, sub.handleMessages(ctx, &wg))
-	exit := make(chan struct{})
+	go errorutils.WithRecover(sub.recoverHandler, sub.handleDelivery(ctx, &wg))
+	exitC := make(chan struct{})
 	go func() {
 		wg.Wait()
-		close(sub.msgC)
-		close(sub.errC)
-		sub.o.logger.Log("close message and error chan")
-		close(exit)
+		close(exitC)
 	}()
-	return exit
+	return exitC
 }
 
-func (sub *Subscriber) handleMessages(ctx context.Context, wg *sync.WaitGroup) func() {
+func (sub *Subscriber) consumeDaemon(ctx context.Context, exitC <-chan struct{}) func() {
+	return func() {
+		for {
+			select {
+			case <-sub.closeC:
+				sub.o.logger.Log("subscriber is closing, stopping subscribe")
+				go sub.closeErrCAndMsgC(nil)
+				return
+			case <-ctx.Done():
+				sub.o.logger.Log("context is Done, stopping subscribe")
+				go sub.closeErrCAndMsgC(nil)
+				return
+			case <-exitC:
+				if err := sub.openConnection(); err != nil {
+					go sub.closeErrCAndMsgC(err)
+					return
+				}
+				exitC = sub.waitConsume(ctx)
+			}
+		}
+	}
+}
+
+func (sub *Subscriber) handleDelivery(ctx context.Context, wg *sync.WaitGroup) func() {
 	return func() {
 		defer wg.Done()
 		defer func() {
@@ -227,6 +202,22 @@ func (sub *Subscriber) handleMessages(ctx context.Context, wg *sync.WaitGroup) f
 			}
 		}()
 
+		notifyCloseC := sub.channel.NotifyClose(make(chan *amqp.Error))
+
+		sub.o.logger.Logf("consumer %s consume queue %s", sub.o.consume.Consumer, sub.queueName)
+		deliveryC, err := sub.channel.Consume(
+			sub.queueName,
+			sub.o.consume.Consumer,
+			false,
+			sub.o.consume.Exclusive,
+			sub.o.consume.NoLocal,
+			sub.o.consume.NoWait,
+			sub.o.consume.Args,
+		)
+		if err != nil {
+			sub.errC <- fmt.Errorf("failed to consume queue %s, %w", sub.queueName, err)
+		}
+
 		for {
 			select {
 			case <-sub.closeC:
@@ -235,10 +226,10 @@ func (sub *Subscriber) handleMessages(ctx context.Context, wg *sync.WaitGroup) f
 			case <-ctx.Done():
 				sub.o.logger.Log("context is Done, stopping handle message")
 				return
-			case <-sub.notifyCloseC:
+			case <-notifyCloseC:
 				sub.o.logger.Logf("channel closed, stopping handle message")
 				return
-			case amqpMsg, ok := <-sub.deliveryC:
+			case amqpMsg, ok := <-deliveryC:
 				if !ok {
 					sub.o.logger.Log("partition consumer message's channel is closed, stopping partition consumer")
 					return
@@ -296,6 +287,6 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 func New(url string, opts ...Option) easypubsub.Subscriber {
 	o := defaultOptions()
 	o.apply(opts...)
-	sub := &Subscriber{url: url, o: o, close: NORMAL, closeC: make(chan struct{})}
+	sub := &Subscriber{url: url, o: o, closed: NORMAL, closeC: make(chan struct{})}
 	return sub
 }
