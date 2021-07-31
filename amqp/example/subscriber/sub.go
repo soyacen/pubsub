@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/soyacen/goutils/backoffutils"
 	"github.com/streadway/amqp"
 
 	"github.com/soyacen/easypubsub"
@@ -253,9 +254,34 @@ func topic() {
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
+	//go func() {
+	//	time.Sleep(10 * time.Second)
+	//	conn.Close()
+	//}()
+
+	go func(closeC chan *amqp.Error) {
+		for {
+			select {
+			case err := <-closeC:
+				time.Sleep(time.Second)
+				fmt.Println("connection", err)
+			}
+		}
+	}(conn.NotifyClose(make(chan *amqp.Error)))
+
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer ch.Close()
+
+	go func(closeC chan *amqp.Error) {
+		for {
+			select {
+			case err, ok := <-closeC:
+				time.Sleep(time.Second)
+				fmt.Println("channel", err, ok)
+			}
+		}
+	}(ch.NotifyClose(make(chan *amqp.Error)))
 
 	err = ch.ExchangeDeclare(
 		"logs_topic", // name
@@ -345,13 +371,16 @@ func sub() {
 		}),
 		amqpsubscriber.WithQueueBinds(queueBinds...),
 		amqpsubscriber.WithConsume(&amqpsubscriber.Consume{}),
+		amqpsubscriber.WithReconnectBackoff(backoffutils.Constant(5*time.Second)),
 	)
-	defer func(subscriber easypubsub.Subscriber) {
-		err := subscriber.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(subscriber)
+	//go func(subscriber easypubsub.Subscriber) {
+	//	time.Sleep(time.Minute)
+	//	err := subscriber.Close()
+	//	log.Println(err)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//}(subscriber)
 
 	msgC, errC := subscriber.Subscribe(context.Background(), "")
 
@@ -373,10 +402,9 @@ out:
 				fmt.Println("break on error chan")
 				break out
 			}
-			fmt.Println("consume error", err)
+			fmt.Println("consume error:", err)
 		}
 	}
-
 }
 
 func failOnError(err error, msg string) {

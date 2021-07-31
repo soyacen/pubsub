@@ -47,7 +47,7 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) *easypubsub
 	}
 
 	if err := pub.channel.Publish(
-		pub.o.exchange.Name, topic,
+		pub.o.exchange.Name, pub.o.publish.RoutingKeyFunc(topic),
 		pub.o.publish.Mandatory, pub.o.publish.Immediate, *amqpMsg); err != nil {
 		return &easypubsub.PublishResult{Err: fmt.Errorf("failed send message, %w", err)}
 	}
@@ -92,26 +92,7 @@ func (pub *Publisher) String() string {
 }
 
 func (pub *Publisher) openConnection() error {
-	if pub.o.amqpConfig != nil {
-		conn, err := amqp.DialConfig(pub.url, *pub.o.amqpConfig)
-		if err != nil {
-			return fmt.Errorf("failed dial %s config %v, %w", pub.url, pub.o.amqpConfig, err)
-		}
-		pub.conn = conn
-		return nil
-	} else if pub.o.tlsConfig != nil {
-		conn, err := amqp.DialTLS(pub.url, pub.o.tlsConfig)
-		if err != nil {
-			return fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
-		}
-		pub.conn = conn
-		return nil
-	}
-	conn, err := amqp.Dial(pub.url)
-	if err != nil {
-		return fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
-	}
-	pub.conn = conn
+
 	return nil
 }
 
@@ -119,15 +100,36 @@ func New(url string, opts ...Option) (easypubsub.Publisher, error) {
 	o := defaultOptions()
 	o.apply(opts...)
 	pub := &Publisher{o: o, url: url, close: NORMAL}
-	if err := pub.openConnection(); err != nil {
-		return nil, err
+
+	pub.o.logger.Logf("dial amqp broker %s", pub.url)
+	if pub.o.amqpConfig != nil {
+		conn, err := amqp.DialConfig(pub.url, *pub.o.amqpConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed dial %s config %v, %w", pub.url, pub.o.amqpConfig, err)
+		}
+		pub.conn = conn
+	} else if pub.o.tlsConfig != nil {
+		conn, err := amqp.DialTLS(pub.url, pub.o.tlsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
+		}
+		pub.conn = conn
+	} else {
+		conn, err := amqp.Dial(pub.url)
+		if err != nil {
+			return nil, fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
+		}
+		pub.conn = conn
 	}
+
+	pub.o.logger.Log("open amqp channel")
 	channel, err := pub.conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("failed open channel, %w", err)
 	}
 	pub.channel = channel
 
+	pub.o.logger.Logf("declare exchange %s, kind is %s", pub.o.exchange.Name, pub.o.exchange.Kind)
 	err = channel.ExchangeDeclare(
 		pub.o.exchange.Name,       // name
 		pub.o.exchange.Kind,       // type

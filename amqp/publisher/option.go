@@ -37,8 +37,9 @@ type MessageProperties struct {
 }
 
 type Publish struct {
-	Mandatory bool
-	Immediate bool
+	RoutingKeyFunc func(topic string) string
+	Mandatory      bool
+	Immediate      bool
 }
 
 type options struct {

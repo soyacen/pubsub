@@ -10,6 +10,8 @@ import (
 
 	"github.com/streadway/amqp"
 
+	"github.com/soyacen/goutils/backoffutils"
+
 	"github.com/soyacen/easypubsub"
 )
 
@@ -65,6 +67,7 @@ type options struct {
 	queue            *Queue
 	queueBinds       []*QueueBind
 	consume          *Consume
+	reconnectBackoff backoffutils.BackoffFunc
 }
 
 func (o *options) apply(opts ...Option) {
@@ -106,6 +109,7 @@ func defaultOptions() *options {
 			NoWait:    false,
 			Args:      nil,
 		},
+		reconnectBackoff: backoffutils.Constant(time.Minute),
 	}
 }
 
@@ -168,6 +172,12 @@ func WithQueueBinds(queueBinds ...*QueueBind) Option {
 func WithConsume(consume *Consume) Option {
 	return func(o *options) {
 		o.consume = consume
+	}
+}
+
+func WithReconnectBackoff(reconnectBackoff backoffutils.BackoffFunc) Option {
+	return func(o *options) {
+		o.reconnectBackoff = reconnectBackoff
 	}
 }
 

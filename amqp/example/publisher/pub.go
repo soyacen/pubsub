@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/streadway/amqp"
 
@@ -205,9 +206,12 @@ func publish() {
 	)
 	failOnError(err, "Failed new amqp publisher")
 	body := bodyFrom(os.Args)
-	result := publisher.Publish(severityFrom(os.Args), easypubsub.NewMessage(easypubsub.WithBody([]byte(body))))
-	failOnError(result.Err, "Failed to publish a message")
-	log.Printf(" [x] Sent %s, result is %s", body, result.Result)
+	for {
+		result := publisher.Publish(severityFrom(os.Args), easypubsub.NewMessage(easypubsub.WithBody([]byte(body))))
+		failOnError(result.Err, "Failed to publish a message")
+		log.Printf(" [x] Sent %s, result is %s", body, result.Result)
+		time.Sleep(time.Second * 2)
+	}
 }
 
 func severityFrom(args []string) string {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/soyacen/goutils/errorutils"
 	"github.com/streadway/amqp"
 
@@ -29,6 +30,7 @@ type Subscriber struct {
 	conn      *amqp.Connection
 	channel   *amqp.Channel
 	queueName string
+	deliveryC <-chan amqp.Delivery
 }
 
 func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *easypubsub.Message, <-chan error) {
@@ -46,22 +48,21 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *eas
 
 }
 
-func (sub *Subscriber) Messages() (msgC <-chan *easypubsub.Message) {
-	return sub.msgC
-}
-
-func (sub *Subscriber) Errors() (errC <-chan error) {
-	return sub.errC
-}
-
 func (sub *Subscriber) Close() error {
 	if atomic.CompareAndSwapInt32(&sub.closed, NORMAL, CLOSED) {
 		close(sub.closeC)
-		err := sub.conn.Close()
-		if err != nil {
-			return fmt.Errorf("failed close amqp connection, %w", err)
+		var err error
+		if sub.channel != nil {
+			if e := sub.channel.Close(); e != nil {
+				err = multierror.Append(err, fmt.Errorf("failed close channel, %w", e))
+			}
 		}
-		return nil
+		if sub.conn != nil {
+			if e := sub.conn.Close(); e != nil {
+				err = multierror.Append(err, fmt.Errorf("failed close channel, %w", e))
+			}
+		}
+		return err
 	}
 	return nil
 }
@@ -70,13 +71,18 @@ func (sub *Subscriber) String() string {
 	return "AMQPSubscriber"
 }
 
-// ========================  consumer consume  ========================
 func (sub *Subscriber) subscribe(ctx context.Context) error {
 	if err := sub.openConnection(); err != nil {
 		return err
 	}
-	exitC := sub.waitConsume(ctx)
-	go errorutils.WithRecover(sub.recoverHandler, sub.consumeDaemon(ctx, exitC))
+	if err := sub.openChannel(); err != nil {
+		return err
+	}
+	if err := sub.consume(); err != nil {
+		return err
+	}
+	go errorutils.WithRecover(sub.recoverHandler, sub.stream(ctx))
+	go errorutils.WithRecover(sub.recoverHandler, sub.consumeDaemon(ctx))
 	return nil
 }
 
@@ -101,6 +107,10 @@ func (sub *Subscriber) openConnection() error {
 		}
 		sub.conn = conn
 	}
+	return nil
+}
+
+func (sub *Subscriber) openChannel() error {
 	sub.o.logger.Log("open amqp channel")
 	channel, err := sub.conn.Channel()
 	if err != nil {
@@ -117,11 +127,17 @@ func (sub *Subscriber) openConnection() error {
 	}
 
 	exchangeName := sub.o.exchange.NameFunc(sub.topic)
-	sub.o.logger.Logf("declare exchange %s", exchangeName)
-	if err := sub.channel.ExchangeDeclare(
-		exchangeName, sub.o.exchange.Kind, sub.o.exchange.Durable,
-		sub.o.exchange.AutoDelete, sub.o.exchange.Internal, sub.o.exchange.NoWait,
-		sub.o.exchange.Args); err != nil {
+	sub.o.logger.Logf("declare exchange %s, kind is %s", exchangeName, sub.o.exchange.Kind)
+	err = sub.channel.ExchangeDeclare(
+		exchangeName,
+		sub.o.exchange.Kind,
+		sub.o.exchange.Durable,
+		sub.o.exchange.AutoDelete,
+		sub.o.exchange.Internal,
+		sub.o.exchange.NoWait,
+		sub.o.exchange.Args,
+	)
+	if err != nil {
 		return fmt.Errorf("failed to declare an exchange, %w", err)
 	}
 
@@ -157,20 +173,49 @@ func (sub *Subscriber) openConnection() error {
 	return nil
 }
 
-func (sub *Subscriber) waitConsume(ctx context.Context) <-chan struct{} {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go errorutils.WithRecover(sub.recoverHandler, sub.handleDelivery(ctx, &wg))
-	exitC := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(exitC)
-	}()
-	return exitC
+func (sub *Subscriber) consume() error {
+	sub.o.logger.Logf("consumer %s start consume queue %s", sub.o.consume.Consumer, sub.queueName)
+	deliveryC, err := sub.channel.Consume(
+		sub.queueName,
+		sub.o.consume.Consumer,
+		false,
+		sub.o.consume.Exclusive,
+		sub.o.consume.NoLocal,
+		sub.o.consume.NoWait,
+		sub.o.consume.Args,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to consume queue %s, %w", sub.queueName, err)
+	}
+	sub.deliveryC = deliveryC
+	return nil
 }
 
-func (sub *Subscriber) consumeDaemon(ctx context.Context, exitC <-chan struct{}) func() {
+func (sub *Subscriber) stream(ctx context.Context) func() {
 	return func() {
+		for {
+			select {
+			case <-sub.closeC:
+				sub.o.logger.Log("subscriber is closing, stopping handle message")
+				return
+			case <-ctx.Done():
+				sub.o.logger.Log("context is Done, stopping handle message")
+				return
+			case amqpMsg, ok := <-sub.deliveryC:
+				if !ok {
+					sub.o.logger.Log("delivery channel is closed, stopping handle message")
+					return
+				}
+				sub.handlerMsg(ctx, &amqpMsg)
+			}
+		}
+
+	}
+}
+
+func (sub *Subscriber) consumeDaemon(ctx context.Context) func() {
+	return func() {
+		sub.o.logger.Log("consume daemon")
 		for {
 			select {
 			case <-sub.closeC:
@@ -181,63 +226,63 @@ func (sub *Subscriber) consumeDaemon(ctx context.Context, exitC <-chan struct{})
 				sub.o.logger.Log("context is Done, stopping subscribe")
 				go sub.closeErrCAndMsgC(nil)
 				return
-			case <-exitC:
-				if err := sub.openConnection(); err != nil {
-					go sub.closeErrCAndMsgC(err)
+			case err := <-sub.conn.NotifyClose(make(chan *amqp.Error, 1)):
+				if err == nil {
+					sub.o.logger.Log("shut down connection, stopping subscribe")
+					go sub.closeErrCAndMsgC(nil)
 					return
 				}
-				exitC = sub.waitConsume(ctx)
-			}
-		}
-	}
-}
-
-func (sub *Subscriber) handleDelivery(ctx context.Context, wg *sync.WaitGroup) func() {
-	return func() {
-		defer wg.Done()
-		defer func() {
-			sub.o.logger.Log("close channel")
-			if err := sub.channel.Close(); err != nil {
-				sub.errC <- fmt.Errorf("failed close channel, %w", err)
-			}
-		}()
-
-		notifyCloseC := sub.channel.NotifyClose(make(chan *amqp.Error))
-
-		sub.o.logger.Logf("consumer %s consume queue %s", sub.o.consume.Consumer, sub.queueName)
-		deliveryC, err := sub.channel.Consume(
-			sub.queueName,
-			sub.o.consume.Consumer,
-			false,
-			sub.o.consume.Exclusive,
-			sub.o.consume.NoLocal,
-			sub.o.consume.NoWait,
-			sub.o.consume.Args,
-		)
-		if err != nil {
-			sub.errC <- fmt.Errorf("failed to consume queue %s, %w", sub.queueName, err)
-		}
-
-		for {
-			select {
-			case <-sub.closeC:
-				sub.o.logger.Log("subscriber is closing, stopping handle message")
-				return
-			case <-ctx.Done():
-				sub.o.logger.Log("context is Done, stopping handle message")
-				return
-			case <-notifyCloseC:
-				sub.o.logger.Logf("channel closed, stopping handle message")
-				return
-			case amqpMsg, ok := <-deliveryC:
-				if !ok {
-					sub.o.logger.Log("partition consumer message's channel is closed, stopping partition consumer")
+				sub.o.logger.Logf("connection is closed with error %v", err)
+				sub.errC <- fmt.Errorf("received a exception from amqp broker, %w", err)
+				for i := 0; ; i++ {
+					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
+					sub.o.logger.Logf("wait %s to reconnect to amqp", reconnectInterval)
+					time.Sleep(reconnectInterval)
+					if err := sub.openConnection(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					if err := sub.openChannel(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					if err := sub.consume(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					go errorutils.WithRecover(sub.recoverHandler, sub.stream(ctx))
+					break
+				}
+			case err := <-sub.channel.NotifyClose(make(chan *amqp.Error, 1)):
+				if err == nil {
+					sub.o.logger.Log("shut down channel, stopping subscribe")
+					go sub.closeErrCAndMsgC(nil)
 					return
 				}
-				sub.handlerMsg(ctx, &amqpMsg)
+				sub.o.logger.Logf("channel is closed with error %v", err)
+				sub.errC <- fmt.Errorf("received a exception from amqp broker, %w", err)
+				for i := 0; ; i++ {
+					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
+					sub.o.logger.Logf("wait %s to reconnect to amqp", reconnectInterval)
+					time.Sleep(reconnectInterval)
+					if err := sub.openChannel(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					if err := sub.consume(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					go errorutils.WithRecover(sub.recoverHandler, sub.stream(ctx))
+					break
+				}
 			}
 		}
-
 	}
 }
 
@@ -277,11 +322,12 @@ func (sub *Subscriber) recoverHandler(p interface{}) {
 }
 
 func (sub *Subscriber) closeErrCAndMsgC(err error) {
+	sub.o.logger.Log("close msg and err chan")
 	if err != nil {
 		sub.errC <- err
 	}
-	close(sub.errC)
 	close(sub.msgC)
+	close(sub.errC)
 }
 
 func New(url string, opts ...Option) easypubsub.Subscriber {
