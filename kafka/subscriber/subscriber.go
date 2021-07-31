@@ -94,7 +94,7 @@ func (sub *Subscriber) createConsumer() error {
 	if err != nil {
 		return fmt.Errorf("failed get partitions, %w", err)
 	}
-	sub.o.logger.Logf("get topic %s partitions ", partitions)
+	sub.o.logger.Logf("get topic %s partitions %v  ", sub.topic, partitions)
 
 	partitionConsumers := make([]sarama.PartitionConsumer, 0, len(partitions))
 	for _, partition := range partitions {
@@ -350,6 +350,7 @@ func (sub *Subscriber) handlerMsg(ctx context.Context, kafkaMsg *sarama.Consumer
 		return
 	}
 
+	var attempt uint
 HandleMsg:
 	msg.Responder = easypubsub.NewResponder()
 	sub.msgC <- msg
@@ -365,9 +366,14 @@ HandleMsg:
 	case <-msg.Nacked():
 		msg.NackResp() <- &easypubsub.Response{Result: "ok"}
 		sub.o.logger.Logf("message %s nacked", msg.Id())
-		if sub.o.nackResendSleepDuration > 0 {
-			time.Sleep(sub.o.nackResendSleepDuration)
+		if attempt >= sub.o.nackResendMaxAttempt {
+			sub.o.logger.Logf("had resent %dth and failed handle message@%s/%d/%d, skip now", sub.o.nackResendMaxAttempt, kafkaMsg.Topic, kafkaMsg.Partition, kafkaMsg.Offset)
+			return
 		}
+		attempt++
+		interval := sub.o.nackResendBackoff(ctx, attempt)
+		sub.o.logger.Logf("this is %dth resend, wait %s", attempt, interval)
+		time.Sleep(interval)
 		sub.o.logger.Logf("message %s resend", msg.Id())
 		goto HandleMsg
 	}

@@ -21,13 +21,14 @@ const (
 type UnmarshalMsgFunc func(ctx context.Context, topic string, kafkaMsg *sarama.ConsumerMessage) (msg *easypubsub.Message, err error)
 
 type options struct {
-	logger                  easypubsub.Logger
-	unmarshalMsgFunc        UnmarshalMsgFunc
-	consumerType            consumerType
-	consumerConfig          *sarama.Config
-	groupID                 string
-	nackResendSleepDuration time.Duration
-	reconnectBackoff        backoffutils.BackoffFunc
+	logger               easypubsub.Logger
+	unmarshalMsgFunc     UnmarshalMsgFunc
+	consumerType         consumerType
+	consumerConfig       *sarama.Config
+	groupID              string
+	nackResendMaxAttempt uint
+	nackResendBackoff    backoffutils.BackoffFunc
+	reconnectBackoff     backoffutils.BackoffFunc
 }
 
 func (o *options) apply(opts ...Option) {
@@ -38,11 +39,12 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:                  easypubsub.DefaultLogger(),
-		unmarshalMsgFunc:        DefaultUnmarshalMsgFunc,
-		consumerType:            consumerTypeConsumer,
-		nackResendSleepDuration: 100 * time.Millisecond,
-		reconnectBackoff:        backoffutils.Constant(time.Minute),
+		logger:               easypubsub.DefaultLogger(),
+		unmarshalMsgFunc:     DefaultUnmarshalMsgFunc,
+		consumerType:         consumerTypeConsumer,
+		nackResendMaxAttempt: 2,
+		nackResendBackoff:    backoffutils.Linear(100 * time.Millisecond),
+		reconnectBackoff:     backoffutils.Constant(time.Minute),
 	}
 }
 
@@ -75,9 +77,10 @@ func WithConsumerGroupConfig(groupID string, config *sarama.Config) Option {
 	}
 }
 
-func WithNackResendSleepDuration(duration time.Duration) Option {
+func WithNackResend(maxAttempt uint, backoff backoffutils.BackoffFunc) Option {
 	return func(o *options) {
-		o.nackResendSleepDuration = duration
+		o.nackResendMaxAttempt = maxAttempt
+		o.nackResendBackoff = backoff
 	}
 }
 

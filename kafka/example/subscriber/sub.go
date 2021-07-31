@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 
@@ -65,6 +66,7 @@ func consumer() {
 		[]string{"localhost:9092"},
 		kafkasubscriber.WithConsumerConfig(kafkasubscriber.DefaultSubscriberConfig()),
 		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
+		kafkasubscriber.WithNackResend(3, backoffutils.Linear(3*time.Second)),
 		kafkasubscriber.WithReconnectBackoff(backoffutils.Constant(5*time.Second)),
 	)
 	defer func(subscriber easypubsub.Subscriber) {
@@ -90,8 +92,15 @@ out:
 			fmt.Println("===============", count, "===============")
 			fmt.Println(msg.Header())
 			fmt.Println(string(msg.Body()))
-			response := msg.Ack()
-			fmt.Println(response)
+			intn := rand.Intn(4)
+			fmt.Println(intn)
+			if intn == 0 {
+				response := msg.Ack()
+				fmt.Println(response)
+			} else {
+				response := msg.Nack()
+				fmt.Println(response)
+			}
 			<-time.After(time.Millisecond)
 		case err, ok := <-errC:
 			if !ok {
