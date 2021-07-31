@@ -51,28 +51,6 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *eas
 func (sub *Subscriber) Close() error {
 	if atomic.CompareAndSwapInt32(&sub.closed, NORMAL, CLOSED) {
 		close(sub.closeC)
-		switch sub.o.consumerType {
-		case consumerTypeConsumerGroup:
-			if sub.consumerGroup == nil {
-				return nil
-			}
-			err := sub.consumerGroup.Close()
-			if err != nil {
-				return fmt.Errorf("failed close consumer group, %w", err)
-			}
-			return nil
-		case consumerTypeConsumer:
-			if sub.consumer == nil {
-				return nil
-			}
-			err := sub.consumer.Close()
-			if err != nil {
-				return fmt.Errorf("failed close consumer, %w", err)
-			}
-			return nil
-		default:
-			return fmt.Errorf("unknown consumer type %d", sub.o.consumerType)
-		}
 	}
 	return nil
 }
@@ -141,6 +119,12 @@ func (sub *Subscriber) waitConsumerConsume(ctx context.Context) <-chan struct{} 
 	exitC := make(chan struct{})
 	go func() {
 		wg.Wait()
+		sub.o.logger.Log("closing kafka consumer")
+		err := sub.consumer.Close()
+		if err != nil {
+			sub.o.logger.Logf("failed close consumer, %v", err)
+			sub.errC <- fmt.Errorf("failed close consumer, %w", err)
+		}
 		close(exitC)
 	}()
 	return exitC
@@ -181,6 +165,7 @@ func (sub *Subscriber) consumerConsumeDaemon(ctx context.Context, exitC <-chan s
 
 func (sub *Subscriber) consumerConsume(ctx context.Context, wg *sync.WaitGroup, partitionConsumer sarama.PartitionConsumer) func() {
 	return func() {
+		sub.o.logger.Log("start partition consumer consume")
 		defer wg.Done()
 		defer func() {
 			sub.o.logger.Log("close partition consumer")
@@ -188,7 +173,6 @@ func (sub *Subscriber) consumerConsume(ctx context.Context, wg *sync.WaitGroup, 
 				sub.errC <- fmt.Errorf("failed close partition consumer, %w", err)
 			}
 		}()
-		sub.o.logger.Log("start partition consumer consume")
 		kafkaMsgC := partitionConsumer.Messages()
 		kafkaErrC := partitionConsumer.Errors()
 		for {
@@ -201,10 +185,12 @@ func (sub *Subscriber) consumerConsume(ctx context.Context, wg *sync.WaitGroup, 
 				return
 			case err, ok := <-kafkaErrC:
 				if !ok {
-					sub.o.logger.Log("partition consumer error's channel is closed, stopping consumer consume")
+					sub.o.logger.Log("consumer error's channel is closed, stopping consumer consume")
 					return
 				}
+				sub.o.logger.Log(err.Error())
 				sub.errC <- err
+				return
 			case kafkaMsg, ok := <-kafkaMsgC:
 				if !ok {
 					sub.o.logger.Log("partition consumer message's channel is closed, stopping consumer consume")
@@ -247,6 +233,12 @@ func (sub *Subscriber) waitConsumerGroupConsume(ctx context.Context) <-chan stru
 	exitC := make(chan struct{})
 	go func() {
 		wg.Wait()
+		sub.o.logger.Log("closing kafka consumer group")
+		err := sub.consumerGroup.Close()
+		if err != nil {
+			sub.o.logger.Logf("failed close consumer group, %v", err)
+			sub.errC <- fmt.Errorf("failed close consumer group, %w", err)
+		}
 		close(exitC)
 	}()
 	return exitC
@@ -304,7 +296,8 @@ func (sub *Subscriber) consumerGroupConsume(ctx context.Context, wg *sync.WaitGr
 				sub.o.logger.Log("start consumer group consume")
 				err := sub.consumerGroup.Consume(ctx, []string{sub.topic}, handler)
 				if err != nil {
-					sub.errC <- fmt.Errorf("failed consume")
+					sub.o.logger.Logf("failed consume, %v", err)
+					sub.errC <- fmt.Errorf("failed consume, %w", err)
 					return
 				}
 			}
@@ -329,6 +322,7 @@ func (c *consumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
 }
 
 func (c *consumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	defer sess.Commit()
 	kafkaMsgC := claim.Messages()
 	for {
 		select {

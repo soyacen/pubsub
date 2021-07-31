@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/soyacen/goutils/backoffutils"
+
 	"github.com/soyacen/easypubsub"
 	kafkasubscriber "github.com/soyacen/easypubsub/kafka/subscriber"
 )
@@ -63,6 +65,7 @@ func consumer() {
 		[]string{"localhost:9092"},
 		kafkasubscriber.WithConsumerConfig(kafkasubscriber.DefaultSubscriberConfig()),
 		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
+		kafkasubscriber.WithReconnectBackoff(backoffutils.Constant(5*time.Second)),
 	)
 	defer func(subscriber easypubsub.Subscriber) {
 		err := subscriber.Close()
@@ -89,7 +92,7 @@ out:
 			fmt.Println(string(msg.Body()))
 			response := msg.Ack()
 			fmt.Println(response)
-			//<-time.After(time.Millisecond+100)
+			<-time.After(time.Millisecond)
 		case err, ok := <-errC:
 			if !ok {
 				fmt.Println("break on error chan")
