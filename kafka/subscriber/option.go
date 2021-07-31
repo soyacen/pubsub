@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/soyacen/goutils/backoffutils"
 
 	"github.com/soyacen/easypubsub"
 )
@@ -26,6 +27,7 @@ type options struct {
 	consumerConfig          *sarama.Config
 	groupID                 string
 	nackResendSleepDuration time.Duration
+	reconnectBackoff        backoffutils.BackoffFunc
 }
 
 func (o *options) apply(opts ...Option) {
@@ -40,6 +42,7 @@ func defaultOptions() *options {
 		unmarshalMsgFunc:        DefaultUnmarshalMsgFunc,
 		consumerType:            consumerTypeConsumer,
 		nackResendSleepDuration: 100 * time.Millisecond,
+		reconnectBackoff:        backoffutils.Constant(time.Minute),
 	}
 }
 
@@ -75,6 +78,12 @@ func WithConsumerGroupConfig(groupID string, config *sarama.Config) Option {
 func WithNackResendSleepDuration(duration time.Duration) Option {
 	return func(o *options) {
 		o.nackResendSleepDuration = duration
+	}
+}
+
+func WithReconnectBackoff(reconnectBackoff backoffutils.BackoffFunc) Option {
+	return func(o *options) {
+		o.reconnectBackoff = reconnectBackoff
 	}
 }
 

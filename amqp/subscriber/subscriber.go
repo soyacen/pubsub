@@ -232,8 +232,8 @@ func (sub *Subscriber) consumeDaemon(ctx context.Context) func() {
 					go sub.closeErrCAndMsgC(nil)
 					return
 				}
-				sub.o.logger.Logf("connection is closed with error %v", err)
 				sub.errC <- fmt.Errorf("received a exception from amqp broker, %w", err)
+				sub.o.logger.Logf("connection is closed with error %v", err)
 				for i := 0; ; i++ {
 					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
 					sub.o.logger.Logf("wait %s to reconnect to amqp", reconnectInterval)
@@ -262,8 +262,8 @@ func (sub *Subscriber) consumeDaemon(ctx context.Context) func() {
 					go sub.closeErrCAndMsgC(nil)
 					return
 				}
-				sub.o.logger.Logf("channel is closed with error %v", err)
 				sub.errC <- fmt.Errorf("received a exception from amqp broker, %w", err)
+				sub.o.logger.Logf("channel is closed with error %v", err)
 				for i := 0; ; i++ {
 					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
 					sub.o.logger.Logf("wait %s to reconnect to amqp", reconnectInterval)

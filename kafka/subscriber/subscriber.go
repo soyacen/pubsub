@@ -159,13 +159,21 @@ func (sub *Subscriber) consumerConsumeDaemon(ctx context.Context, exitC <-chan s
 				go sub.closeErrCAndMsgC(nil)
 				return
 			case <-exitC:
-				sub.o.logger.Log("recreate consumer")
-				if err := sub.createConsumer(); err != nil {
-					go sub.closeErrCAndMsgC(err)
-					return
+				sub.o.logger.Logf("consumer consume is exited")
+				for i := 0; ; i++ {
+					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
+					sub.o.logger.Logf("wait %s to reconnect to kafka", reconnectInterval)
+					time.Sleep(reconnectInterval)
+					if err := sub.createConsumer(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					sub.o.logger.Log("prepare partition consumer consume")
+					exitC = sub.waitConsumerConsume(ctx)
+					break
 				}
-				sub.o.logger.Log("prepare partition consumer consume")
-				exitC = sub.waitConsumerConsume(ctx)
+
 			}
 		}
 	}
@@ -257,11 +265,18 @@ func (sub *Subscriber) consumerGroupConsumeDaemon(ctx context.Context, exitC <-c
 				go sub.closeErrCAndMsgC(nil)
 				return
 			case <-exitC:
-				if err := sub.createConsumerGroup(); err != nil {
-					go sub.closeErrCAndMsgC(err)
-					return
+				sub.o.logger.Logf("consumerGroup consume is exited")
+				for i := 0; ; i++ {
+					reconnectInterval := sub.o.reconnectBackoff(ctx, uint(i))
+					sub.o.logger.Logf("wait %s to reconnect to kafka", reconnectInterval)
+					time.Sleep(reconnectInterval)
+					if err := sub.createConsumerGroup(); err != nil {
+						sub.o.logger.Log(err.Error())
+						sub.errC <- err
+						continue
+					}
+					exitC = sub.waitConsumerGroupConsume(ctx)
 				}
-				exitC = sub.waitConsumerGroupConsume(ctx)
 			}
 		}
 	}
