@@ -95,6 +95,9 @@ func (c *Pipe) handleMsg(msg *easypubsub.Message) {
 		c.errC <- err
 		return
 	}
+	if c.sink == nil {
+		return
+	}
 	c.o.logger.Logf("send message %s", msg.Id())
 	publishResult := c.sink.publisher.Publish(c.sink.topic, msg)
 	if publishResult.Err != nil {
