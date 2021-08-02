@@ -32,3 +32,4 @@
 /io/example/subscriber/subscriber
 /kafka/example/subscriber/subscriber
 /pipe/example/copy/copy
+/pipe/example/print/print

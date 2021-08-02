@@ -36,82 +36,92 @@ type (
 	}
 )
 
-func (c *Pipe) Flow(ctx context.Context) <-chan error {
-	c.errC = make(chan error)
-	if atomic.LoadInt32(&c.closed) == CLOSED {
-		go c.closeErrC(errors.New("pipe is closed"))
-		return c.errC
+func (pipe *Pipe) Flow(ctx context.Context) <-chan error {
+	pipe.errC = make(chan error)
+	if atomic.LoadInt32(&pipe.closed) == CLOSED {
+		go pipe.closeErrC(errors.New("pipe is closed"))
+		return pipe.errC
 	}
-	go c.flow(ctx)
-	return c.errC
+	if pipe.source == nil {
+		go pipe.closeErrC(errors.New("source is nil"))
+		return pipe.errC
+	}
+	go pipe.flow(ctx)
+	return pipe.errC
 }
 
-func (c *Pipe) Close() error {
-	if atomic.CompareAndSwapInt32(&c.closed, NORMAL, CLOSED) {
+func (pipe *Pipe) Close() error {
+	if atomic.CompareAndSwapInt32(&pipe.closed, NORMAL, CLOSED) {
 		var err error
-		if e := c.source.subscriber.Close(); e != nil {
-			err = multierror.Append(err, e)
+		if pipe.source != nil {
+			if e := pipe.source.subscriber.Close(); e != nil {
+				err = multierror.Append(err, e)
+			}
 		}
-		c.wg.Wait()
-		if e := c.sink.publisher.Close(); e != nil {
-			err = multierror.Append(err, e)
+		pipe.wg.Wait()
+		if pipe.sink != nil {
+			if e := pipe.sink.publisher.Close(); e != nil {
+				err = multierror.Append(err, e)
+			}
 		}
-		close(c.closeC)
+		close(pipe.closeC)
 		return err
 	}
 	return nil
 }
 
-func (c *Pipe) flow(ctx context.Context) {
-	c.o.logger.Log("start flow")
-	msgC, errC := c.source.subscriber.Subscribe(ctx, c.source.topic)
+func (pipe *Pipe) flow(ctx context.Context) {
+	pipe.o.logger.Log("start flow")
+	msgC, errC := pipe.source.subscriber.Subscribe(ctx, pipe.source.topic)
 	for {
 		select {
-		case <-c.closeC:
-			c.o.logger.Log("pipe is closing, stopping flow")
+		case <-pipe.closeC:
+			pipe.o.logger.Log("pipe is closing, stopping flow")
+			pipe.closeErrC(nil)
 			return
 		case <-ctx.Done():
-			c.o.logger.Log("context is done, stopping flow")
+			pipe.o.logger.Log("context is done, stopping flow")
+			pipe.closeErrC(nil)
 			return
 		case err := <-errC:
 			if err != nil {
-				c.o.logger.Log(err.Error())
-				c.errC <- err
+				pipe.o.logger.Log(err.Error())
+				pipe.errC <- err
 			}
 		case msg := <-msgC:
 			if msg != nil {
-				c.handleMsg(msg)
+				pipe.handleMsg(msg)
 			}
 		}
 	}
 }
 
-func (c *Pipe) handleMsg(msg *easypubsub.Message) {
-	c.wg.Add(1)
-	defer c.wg.Done()
-	if err := c.interceptor(msg, c.handler); err != nil {
+func (pipe *Pipe) handleMsg(msg *easypubsub.Message) {
+	pipe.wg.Add(1)
+	defer pipe.wg.Done()
+	if err := pipe.interceptor(msg, pipe.handler); err != nil {
 		msg.Ack()
-		c.o.logger.Logf("msg %d was intercepted and auto acked, error: %v", msg.Id(), err)
-		c.errC <- err
+		pipe.o.logger.Logf("msg %s was intercepted and auto acked, error: %v", msg.Id(), err)
+		pipe.errC <- err
 		return
 	}
-	if c.sink == nil {
+	if pipe.sink == nil {
 		return
 	}
-	c.o.logger.Logf("send message %s", msg.Id())
-	publishResult := c.sink.publisher.Publish(c.sink.topic, msg)
+	pipe.o.logger.Logf("send message %s", msg.Id())
+	publishResult := pipe.sink.publisher.Publish(pipe.sink.topic, msg)
 	if publishResult.Err != nil {
-		c.errC <- publishResult.Err
+		pipe.errC <- publishResult.Err
 	} else {
-		c.o.logger.Logf("successful publish message, result: %v", publishResult.Result)
+		pipe.o.logger.Logf("successful publish message, result: %v", publishResult.Result)
 	}
 }
 
-func (c *Pipe) closeErrC(err error) {
+func (pipe *Pipe) closeErrC(err error) {
 	if err != nil {
-		c.errC <- err
+		pipe.errC <- err
 	}
-	close(c.errC)
+	close(pipe.errC)
 }
 
 func defaultOptions() *options {
