@@ -1,6 +1,8 @@
 package pipemiddleware
 
 import (
+	"fmt"
+
 	"github.com/soyacen/easypubsub"
 	easypubsubpipe "github.com/soyacen/easypubsub/pipe"
 )
@@ -19,4 +21,12 @@ func Recovery(recoveryHandler RecoveryHandlerFunc) easypubsubpipe.Interceptor {
 		err = handler(msg)
 		return err
 	}
+}
+
+func DefaultRecoveryHandlerFunc(p interface{}) (err error) {
+	err, ok := p.(error)
+	if ok {
+		return err
+	}
+	return fmt.Errorf("%v", p)
 }
