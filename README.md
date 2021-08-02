@@ -14,7 +14,7 @@ Easypubsub also can build event driven applications.
 
 
 # Pub/Subs
-Easypubsub provides universal interfaces for publisher and subscriber, also provide pipe
+Easypubsub provides universal interfaces for publisher and subscriber
 ```go
 type (
     PublishResult struct {
@@ -35,6 +35,10 @@ type Subscriber interface {
     fmt.Stringer
 }
 ```
+
+# Pipe
+Pipe combines subscriber and Publisher, abstracts source and sink to process data streams,
+* [copy](pipe/example/copy)
 
 # Examples
 ## kafka

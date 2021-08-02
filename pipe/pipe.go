@@ -20,7 +20,6 @@ type (
 	options struct {
 		interceptors []Interceptor
 		logger       easypubsub.Logger
-		bufferSize   int
 	}
 
 	Pipe struct {
@@ -129,12 +128,6 @@ func WithLogger(logger easypubsub.Logger) Option {
 func WithInterceptors(interceptors ...Interceptor) Option {
 	return func(o *options) {
 		o.interceptors = append(o.interceptors, interceptors...)
-	}
-}
-
-func WithBufferSize(size int) Option {
-	return func(o *options) {
-		o.bufferSize = size
 	}
 }
 
