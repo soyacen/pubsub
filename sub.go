@@ -12,24 +12,16 @@ type Subscriber interface {
 	fmt.Stringer
 }
 
-type nopSubscriber struct{}
+type NopSubscriber struct{}
 
-func (n *nopSubscriber) Subscribe(ctx context.Context, topic string) (err error) {
+func (sub *NopSubscriber) Subscribe(ctx context.Context, topic string) (<-chan *Message, <-chan error) {
+	return nil, nil
+}
+
+func (sub *NopSubscriber) Close() error {
 	return nil
 }
 
-func (n *nopSubscriber) Messages() (msgC <-chan *Message) {
-	return nil
-}
-
-func (n *nopSubscriber) Errors() (errC <-chan error) {
-	return nil
-}
-
-func (n *nopSubscriber) Close() error {
-	return nil
-}
-
-func (n *nopSubscriber) String() string {
-	return "nopSubscriber"
+func (sub *NopSubscriber) String() string {
+	return "NopSubscriber"
 }

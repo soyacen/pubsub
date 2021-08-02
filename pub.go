@@ -18,16 +18,16 @@ type (
 	}
 )
 
-type nopPublisher struct{}
+type NopPublisher struct{}
 
-func (n *nopPublisher) Publish(topic string, msg *Message) (result *PublishResult) {
+func (pub *NopPublisher) Publish(topic string, msg *Message) (result *PublishResult) {
 	return &PublishResult{}
 }
 
-func (n *nopPublisher) Close() error {
+func (pub *NopPublisher) Close() error {
 	return nil
 }
 
-func (n *nopPublisher) String() string {
-	return "nopPublisher"
+func (pub *NopPublisher) String() string {
+	return "NopPublisher"
 }
