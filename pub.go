@@ -20,8 +20,6 @@ type (
 
 type nopPublisher struct{}
 
-func (n *nopPublisher) AddInterceptor(interceptors ...Interceptor) {}
-
 func (n *nopPublisher) Publish(topic string, msg *Message) (result *PublishResult) {
 	return &PublishResult{}
 }

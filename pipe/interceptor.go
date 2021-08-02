@@ -1,13 +1,11 @@
-package easypubsub
+package easypubsubpipe
+
+import "github.com/soyacen/easypubsub"
 
 type (
-	MsgHandler  func(topic string, msg *Message) error
-	Interceptor func(topic string, msg *Message, handler MsgHandler) error
+	MessageHandler func(msg *easypubsub.Message) error
+	Interceptor    func(msg *easypubsub.Message, handler MessageHandler) error
 )
-
-func DefaultMsgHandler(topic string, msg *Message) error {
-	return nil
-}
 
 // ChainInterceptor creates a single interceptor out of a chain of many interceptors.
 // Execution is done in left-to-right order
@@ -16,8 +14,8 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 
 	// Dummy interceptor maintained for backward compatibility to avoid returning nil.
 	if n == 0 {
-		return func(topic string, msg *Message, handler MsgHandler) error {
-			return handler(topic, msg)
+		return func(msg *easypubsub.Message, handler MessageHandler) error {
+			return handler(msg)
 		}
 	}
 	// The degenerate case, just return the single wrapped interceptor directly.
@@ -26,7 +24,7 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 	// Return a function which satisfies the interceptor interface, and which is
 	// a closure over the given list of interceptors to be chained.
-	return func(topic string, msg *Message, handler MsgHandler) error {
+	return func(msg *easypubsub.Message, handler MessageHandler) error {
 		currHandler := handler
 		// Iterate backwards through all interceptors except the first (outermost).
 		// Wrap each one in a function which satisfies the handler interface, but
@@ -35,12 +33,12 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 		for i := n - 1; i > 0; i-- {
 			// Rebind to loop-local vars so they can be closed over.
 			innerHandler, i := currHandler, i
-			currHandler = func(topic string, msg *Message) error {
-				return interceptors[i](topic, msg, innerHandler)
+			currHandler = func(msg *easypubsub.Message) error {
+				return interceptors[i](msg, innerHandler)
 			}
 		}
 		// Finally return the result of calling the outermost interceptor with the
 		// outermost pseudo-handler created above as its handler.
-		return interceptors[0](topic, msg, currHandler)
+		return interceptors[0](msg, currHandler)
 	}
 }

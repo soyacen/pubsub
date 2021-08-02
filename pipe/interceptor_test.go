@@ -1,4 +1,4 @@
-package easypubsub_test
+package easypubsubpipe_test
 
 import (
 	"context"
@@ -7,36 +7,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/soyacen/easypubsub"
+	easypubsubpipe "github.com/soyacen/easypubsub/pipe"
 )
 
 func TestChainInterceptor(t *testing.T) {
-	first := func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
-		require.Equal(t, "interceptor", topic)
+	first := func(msg *easypubsub.Message, handler easypubsubpipe.MessageHandler) error {
 		require.Equal(t, []byte("interceptor"), msg.Body())
 		requireContextValue(t, msg.Context(), "origin")
 
-		newTopic := topic + ":first"
 		msg.SetContext(context.WithValue(msg.Context(), "first", "true"))
 		msg.Header().Set("first", "true")
 		msg.SetBody(append(msg.Body(), ",first"...))
-		return handler(newTopic, msg)
+		return handler(msg)
 	}
-	second := func(topic string, msg *easypubsub.Message, handler easypubsub.MsgHandler) error {
-		require.Equal(t, "interceptor:first", topic)
+	second := func(msg *easypubsub.Message, handler easypubsubpipe.MessageHandler) error {
 		require.Equal(t, []byte("interceptor,first"), msg.Body())
 		pairs, _ := easypubsub.NewHeaderWithPairs("first", "true")
 		require.Equal(t, pairs, msg.Header())
 		requireContextValue(t, msg.Context(), "origin")
 		requireContextValue(t, msg.Context(), "first")
 
-		newTopic := topic + ":second"
 		msg.SetContext(context.WithValue(msg.Context(), "second", "true"))
 		msg.Header().Set("second", "true")
 		msg.SetBody(append(msg.Body(), ",second"...))
-		return handler(newTopic, msg)
+		return handler(msg)
 	}
-	handler := func(topic string, msg *easypubsub.Message) error {
-		require.Equal(t, "interceptor:first:second", topic)
+	handler := func(msg *easypubsub.Message) error {
 		require.Equal(t, []byte("interceptor,first,second"), msg.Body())
 		pairs, _ := easypubsub.NewHeaderWithPairs("first", "true", "second", "true")
 		require.Equal(t, pairs, msg.Header())
@@ -45,12 +41,12 @@ func TestChainInterceptor(t *testing.T) {
 		requireContextValue(t, msg.Context(), "second")
 		return nil
 	}
-	interceptor := easypubsub.ChainInterceptor(first, second)
+	interceptor := easypubsubpipe.ChainInterceptor(first, second)
 	message := easypubsub.NewMessage(
 		easypubsub.WithBody([]byte("interceptor")),
 		easypubsub.WithContext(context.WithValue(context.Background(), "origin", "true")),
 	)
-	err := interceptor("interceptor", message, handler)
+	err := interceptor(message, handler)
 	require.Nil(t, err)
 }
 

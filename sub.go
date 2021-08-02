@@ -16,8 +16,6 @@ type (
 
 type nopSubscriber struct{}
 
-func (n *nopSubscriber) AddInterceptor(interceptors ...Interceptor) {}
-
 func (n *nopSubscriber) Subscribe(ctx context.Context, topic string) (err error) {
 	return nil
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/soyacen/easypubsub"
 	iopublisher "github.com/soyacen/easypubsub/io/publisher"
 	iosubscriber "github.com/soyacen/easypubsub/io/subscriber"
+	easypubsubpipe "github.com/soyacen/easypubsub/pipe"
+	pipemiddleware "github.com/soyacen/easypubsub/pipe/middleware"
 )
 
 var source = flag.String("source", "", "source file path")
@@ -57,45 +59,38 @@ func main() {
 		targetFile,
 		iopublisher.WithMarshalMsgFunc(marshalMsg),
 	)
-
+	i := 0
 	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
-	channel := easypubsub.NewChannel(
-		easypubsub.NewSource("", subscriber),
-		easypubsub.NewSink("", publisher),
-		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
-			if rand.Int()%3 == 0 {
-				inMsg.Nack()
-				return nil, errors.New("this is zero error")
+	channel := easypubsubpipe.New(
+		easypubsubpipe.NewSource("", subscriber),
+		easypubsubpipe.NewSink("", publisher),
+		func(msg *easypubsub.Message) error {
+			ackResp := msg.Ack()
+			i++
+			fmt.Println(ackResp, i)
+			return nil
+		},
+		easypubsubpipe.WithInterceptors(pipemiddleware.Recovery(func(p interface{}) (err error) {
+			fmt.Println("Recovery: ", p)
+			i++
+			return errors.New(fmt.Sprint(p))
+		}), func(msg *easypubsub.Message, handler easypubsubpipe.MessageHandler) error {
+			randInt := rand.Intn(100)
+			if randInt > 90 {
+				panic(fmt.Errorf("%d > 90", randInt))
 			}
-			inMsg.Ack()
-			return inMsg, nil
+			return handler(msg)
 		}),
-		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
-			if rand.Int()%3 == 1 {
-				inMsg.Nack()
-				return nil, errors.New("this is one error")
-			}
-			inMsg.Ack()
-			return inMsg, nil
-		}),
-		easypubsub.WithFilter(func(inMsg *easypubsub.Message) (outMsg *easypubsub.Message, err error) {
-			if rand.Int()%3 == 1 {
-				inMsg.Nack()
-				return nil, errors.New("this is two error")
-			}
-			inMsg.Ack()
-			return inMsg, nil
-		}),
-		easypubsub.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
+		easypubsubpipe.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 4000*time.Millisecond)
 	defer cancelFunc()
-	err = channel.Flow(ctx)
+	errC := channel.Flow(ctx)
+	for err := range errC {
+		fmt.Println(err)
+	}
+	err = channel.Close()
 	if err != nil {
 		panic(err)
 	}
-	for err := range channel.Errors() {
-		fmt.Println(err)
-	}
-	channel.Close()
 }

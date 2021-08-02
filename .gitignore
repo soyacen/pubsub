@@ -31,3 +31,4 @@
 /amqp/example/subscriber/subscriber
 /io/example/subscriber/subscriber
 /kafka/example/subscriber/subscriber
+/pipe/example/copy/copy
