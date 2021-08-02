@@ -6,13 +6,11 @@ import (
 	"io"
 )
 
-type (
-	Subscriber interface {
-		Subscribe(ctx context.Context, topic string) (<-chan *Message, <-chan error)
-		io.Closer
-		fmt.Stringer
-	}
-)
+type Subscriber interface {
+	Subscribe(ctx context.Context, topic string) (<-chan *Message, <-chan error)
+	io.Closer
+	fmt.Stringer
+}
 
 type nopSubscriber struct{}
 
