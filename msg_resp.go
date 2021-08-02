@@ -38,7 +38,7 @@ func NewResponder() *Responder {
 	return responder
 }
 
-func (r *Responder) Ack() *Response {
+func (r *Responder) Ack() (ackResp *Response) {
 	if r == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (r *Responder) Ack() *Response {
 	return resp
 }
 
-func (r *Responder) Nack() *Response {
+func (r *Responder) Nack() (nackResp *Response) {
 	if r == nil {
 		return nil
 	}
