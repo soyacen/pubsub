@@ -44,9 +44,6 @@ func main() {
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	msgC, errC := subscriber.Subscribe(ctx, "awesome")
-	if err != nil {
-		panic(err)
-	}
 
 	count := 0
 out:
