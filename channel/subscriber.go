@@ -1,24 +1,50 @@
-package chansubscriber
+package channel
 
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"time"
 
 	"github.com/soyacen/easypubsub"
 )
 
-const (
-	NORMAL = 0
-	CLOSED = 1
-)
+type subOptions struct {
+	logger                  easypubsub.Logger
+	nackResendSleepDuration time.Duration
+}
+
+func (o *subOptions) apply(opts ...SubOption) {
+	for _, opt := range opts {
+		opt(o)
+	}
+}
+
+func defaultSubOptions() *subOptions {
+	return &subOptions{
+		logger:                  easypubsub.DefaultLogger(),
+		nackResendSleepDuration: 5 * time.Second,
+	}
+}
+
+type SubOption func(o *subOptions)
+
+func WithLogger(logger easypubsub.Logger) SubOption {
+	return func(o *subOptions) {
+		o.logger = logger
+	}
+}
+
+func WithNackResendSleepDuration(interval time.Duration) SubOption {
+	return func(o *subOptions) {
+		o.nackResendSleepDuration = interval
+	}
+}
 
 type Subscriber struct {
-	o      *options
-	closed int32
+	o      *subOptions
+	holder *PubSub
+	inputC chan *easypubsub.Message
 	closeC chan struct{}
-	inputC <-chan *easypubsub.Message
 	topic  string
 	errC   chan error
 	msgC   chan *easypubsub.Message
@@ -27,9 +53,11 @@ type Subscriber struct {
 func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *easypubsub.Message, <-chan error) {
 	sub.errC = make(chan error)
 	sub.msgC = make(chan *easypubsub.Message)
-	if atomic.LoadInt32(&sub.closed) == CLOSED {
+	select {
+	case <-sub.closeC:
 		go sub.closeErrCAndMsgC(errors.New("subscriber is closed"))
 		return sub.msgC, sub.errC
+	default:
 	}
 	sub.topic = topic
 	go sub.subscribe(ctx)
@@ -37,28 +65,32 @@ func (sub *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *eas
 }
 
 func (sub *Subscriber) Close() error {
-	if atomic.CompareAndSwapInt32(&sub.closed, NORMAL, CLOSED) {
+	select {
+	case <-sub.closeC:
+	default:
 		close(sub.closeC)
-		return nil
 	}
 	return nil
 }
 
 func (sub *Subscriber) String() string {
-	return "IOSubscriber"
+	return "ChanSubscriber"
 }
 
 func (sub *Subscriber) subscribe(ctx context.Context) {
-	defer sub.closeErrCAndMsgC(nil)
 	sub.o.logger.Logf("start subscribe")
+	defer sub.closeErrCAndMsgC(nil)
+	sub.inputC = make(chan *easypubsub.Message)
+	sub.holder.RegisterMessageChannel(sub.topic, sub.inputC)
+	defer sub.holder.DeregisterMessageChannel(sub.topic, sub.inputC)
 	for {
 		select {
 		case <-sub.closeC:
+			close(sub.inputC)
 			sub.o.logger.Log("subscriber is closing, stopping subscribe")
-			return
 		case <-ctx.Done():
+			close(sub.inputC)
 			sub.o.logger.Log("context is Done, stopping subscribe")
-			return
 		default:
 			msg, ok := <-sub.inputC
 			if !ok {
@@ -94,9 +126,9 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 	close(sub.msgC)
 }
 
-func New(inputC <-chan *easypubsub.Message, opts ...Option) easypubsub.Subscriber {
-	o := defaultOptions()
+func NewSubscriber(holder *PubSub, opts ...SubOption) easypubsub.Subscriber {
+	o := defaultSubOptions()
 	o.apply(opts...)
-	sub := &Subscriber{o: o, inputC: inputC, closed: NORMAL, closeC: make(chan struct{})}
+	sub := &Subscriber{o: o, holder: holder, closeC: make(chan struct{})}
 	return sub
 }

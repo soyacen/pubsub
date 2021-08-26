@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/soyacen/easypubsub"
-	chansubscriber "github.com/soyacen/easypubsub/chan/subscriber"
+	channelsubscriber "github.com/soyacen/easypubsub/channel/subscriber"
 )
 
 func main() {
@@ -18,10 +18,10 @@ func main() {
 		}
 		close(originC)
 	}()
-	subscriber := chansubscriber.New(
+	subscriber := channelsubscriber.New(
 		originC,
-		chansubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
-		chansubscriber.WithNackResendSleepDuration(5*time.Second))
+		channelsubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
+		channelsubscriber.WithNackResendSleepDuration(5*time.Second))
 
 	msgC, errC := subscriber.Subscribe(context.Background(), "awesome")
 	count := 0

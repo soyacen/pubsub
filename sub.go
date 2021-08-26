@@ -7,7 +7,7 @@ import (
 )
 
 type Subscriber interface {
-	Subscribe(ctx context.Context, topic string) (<-chan *Message, <-chan error)
+	Subscribe(ctx context.Context, topic string) (msgC <-chan *Message, errC <-chan error)
 	io.Closer
 	fmt.Stringer
 }

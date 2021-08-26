@@ -10,9 +10,9 @@ const DefaultMessageUUIDKey = "Easy-PubSub-Message-UUID"
 
 type Message struct {
 	id     string
-	ctx    context.Context
 	header Header
 	body   []byte
+	ctx    context.Context
 	*Responder
 }
 
@@ -88,8 +88,8 @@ func WithBody(body []byte) MessageOption {
 
 func NewMessage(opts ...MessageOption) *Message {
 	msg := &Message{
-		header: NewHeader(),
 		id:     uuid.NewString(),
+		header: NewHeader(),
 		ctx:    context.Background(),
 	}
 	for _, opt := range opts {
