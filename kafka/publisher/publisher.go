@@ -51,13 +51,13 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 
 	pub.o.logger.Logf("send message %s", id)
 	switch pub.producerO.producerType {
-	case producerTypeSync:
+	case syncProducerType:
 		partition, offset, err := pub.syncProducer.SendMessage(producerMsg)
 		if err != nil {
 			return &easypubsub.PublishResult{Err: fmt.Errorf("failed send message, %w", err)}
 		}
 		return &easypubsub.PublishResult{Result: &PublishResult{Partition: partition, Offset: offset}}
-	case producerTypeAsync:
+	case asyncProducerType:
 		pub.asyncProducer.Input() <- producerMsg
 		return &easypubsub.PublishResult{Result: id}
 	default:
@@ -68,9 +68,9 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 func (pub *Publisher) Close() error {
 	if atomic.CompareAndSwapInt32(&pub.close, NORMAL, CLOSED) {
 		switch pub.producerO.producerType {
-		case producerTypeSync:
+		case syncProducerType:
 			return pub.syncProducer.Close()
-		case producerTypeAsync:
+		case asyncProducerType:
 			pub.asyncProducer.AsyncClose()
 			pub.wg.Wait()
 			return nil
@@ -112,13 +112,13 @@ func New(producerOpt ProducerOption, opts ...Option) (easypubsub.Publisher, erro
 	switch pub.producerO.producerType {
 	default:
 		return nil, fmt.Errorf("unknown publisher type %d", pub.producerO.producerType)
-	case producerTypeSync:
+	case syncProducerType:
 		producer, err := sarama.NewSyncProducer(pub.producerO.brokers, pub.producerO.producerConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed new kafka sync producer, %w", err)
 		}
 		pub.syncProducer = producer
-	case producerTypeAsync:
+	case asyncProducerType:
 		producer, err := sarama.NewAsyncProducer(pub.producerO.brokers, pub.producerO.producerConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed new kafka async producer, %w", err)

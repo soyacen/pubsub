@@ -353,7 +353,7 @@ func sub() {
 	}
 
 	subscriber := amqpsubscriber.New(
-		"amqp://guest:guest@localhost:5672/",
+		amqpsubscriber.Connection("amqp://guest:guest@localhost:5672/"),
 		amqpsubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		amqpsubscriber.WithExchange(&amqpsubscriber.Exchange{
 			NameFunc: func(topic string) string {

@@ -61,9 +61,9 @@ func (sub *Subscriber) String() string {
 
 func (sub *Subscriber) subscribe(ctx context.Context) error {
 	switch sub.consumerO.consumerType {
-	case consumerTypeConsumer:
+	case consumerConsumerType:
 		return sub.consumerSubscribe(ctx)
-	case consumerTypeConsumerGroup:
+	case consumerGroupConsumerType:
 		return sub.consumerGroupSubscribe(ctx)
 	default:
 		return fmt.Errorf("unknown consumer type %d", sub.consumerO.consumerType)

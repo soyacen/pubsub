@@ -45,8 +45,6 @@ type Publish struct {
 type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
-	tlsConfig      *tls.Config
-	amqpConfig     *amqp.Config
 	exchange       *Exchange
 	msgProps       *MessageProperties
 	publish        *Publish
@@ -61,8 +59,32 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:         easypubsub.DefaultLogger(),
-		marshalMsgFunc: DefaultMarshalMsgFunc,
+		logger: easypubsub.DefaultLogger(),
+		marshalMsgFunc: func(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error) {
+			amqpHeader := make(amqp.Table, len(msg.Header())+1)
+			amqpHeader[easypubsub.DefaultMessageUUIDKey] = msg.Id()
+			msgHeader := msg.Header()
+			for key, values := range msgHeader {
+				amqpHeader[key] = append([]string{}, values...)
+			}
+			pMsg := &amqp.Publishing{
+				Headers:         amqpHeader,
+				ContentType:     msgProps.ContentType,
+				ContentEncoding: msgProps.ContentEncoding,
+				DeliveryMode:    msgProps.DeliveryMode,
+				Priority:        msgProps.Priority,
+				CorrelationId:   msgProps.CorrelationId,
+				ReplyTo:         msgProps.ReplyTo,
+				Expiration:      msgProps.Expiration,
+				MessageId:       msgProps.MessageId,
+				Timestamp:       msgProps.Timestamp,
+				Type:            msgProps.Type,
+				UserId:          msgProps.UserId,
+				AppId:           msgProps.AppId,
+				Body:            msg.Body(),
+			}
+			return pMsg, nil
+		},
 		msgProps: &MessageProperties{
 			ContentType:     "text/plain",
 			ContentEncoding: "",
@@ -99,18 +121,6 @@ func WithLogger(logger easypubsub.Logger) Option {
 	}
 }
 
-func WithTLSConfig(config *tls.Config) Option {
-	return func(o *options) {
-		o.tlsConfig = config
-	}
-}
-
-func WithAMQPConfig(config *amqp.Config) Option {
-	return func(o *options) {
-		o.amqpConfig = config
-	}
-}
-
 func WithExchange(exchange *Exchange) Option {
 	return func(o *options) {
 		o.exchange = exchange
@@ -135,28 +145,41 @@ func WithTransactional(enabled bool) Option {
 	}
 }
 
-func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message, msgProps *MessageProperties) (*amqp.Publishing, error) {
-	amqpHeader := make(amqp.Table, len(msg.Header())+1)
-	amqpHeader[easypubsub.DefaultMessageUUIDKey] = msg.Id()
-	msgHeader := msg.Header()
-	for key, values := range msgHeader {
-		amqpHeader[key] = append([]string{}, values...)
+const (
+	_ = iota
+	normalConnectionType
+	tlsConnectionType
+	amqpConnectionType
+)
+
+type connectionOptions struct {
+	connectionType int
+	url            string
+	tlsConfig      *tls.Config
+	amqpConfig     *amqp.Config
+}
+
+type ConnectionOption func(o *connectionOptions)
+
+func Connection(url string) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.connectionType = normalConnectionType
 	}
-	pMsg := &amqp.Publishing{
-		Headers:         amqpHeader,
-		ContentType:     msgProps.ContentType,
-		ContentEncoding: msgProps.ContentEncoding,
-		DeliveryMode:    msgProps.DeliveryMode,
-		Priority:        msgProps.Priority,
-		CorrelationId:   msgProps.CorrelationId,
-		ReplyTo:         msgProps.ReplyTo,
-		Expiration:      msgProps.Expiration,
-		MessageId:       msgProps.MessageId,
-		Timestamp:       msgProps.Timestamp,
-		Type:            msgProps.Type,
-		UserId:          msgProps.UserId,
-		AppId:           msgProps.AppId,
-		Body:            msg.Body(),
+}
+
+func ConnectionWithTLS(url string, tlsConfig *tls.Config) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.tlsConfig = tlsConfig
+		o.connectionType = tlsConnectionType
 	}
-	return pMsg, nil
+}
+
+func ConnectionWithConfig(url string, amqpConfig *amqp.Config) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.amqpConfig = amqpConfig
+		o.connectionType = amqpConnectionType
+	}
 }

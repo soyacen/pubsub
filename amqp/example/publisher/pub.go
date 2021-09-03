@@ -200,7 +200,7 @@ func topic() {
 
 func publish() {
 	publisher, err := amqppublisher.New(
-		"amqp://guest:guest@localhost:5672/",
+		amqppublisher.Connection("amqp://guest:guest@localhost:5672/"),
 		amqppublisher.WithExchange(&amqppublisher.Exchange{Name: "logs_topic", Kind: "topic", Durable: true}),
 		amqppublisher.WithTransactional(true),
 	)

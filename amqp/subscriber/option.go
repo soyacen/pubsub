@@ -60,8 +60,6 @@ type options struct {
 	logger           easypubsub.Logger
 	unmarshalMsgFunc UnmarshalMsgFunc
 	requeueOnNack    bool
-	tlsConfig        *tls.Config
-	amqpConfig       *amqp.Config
 	qosConfig        *QosConfig
 	exchange         *Exchange
 	queue            *Queue
@@ -79,7 +77,7 @@ func (o *options) apply(opts ...Option) {
 func defaultOptions() *options {
 	return &options{
 		logger:           easypubsub.DefaultLogger(),
-		unmarshalMsgFunc: DefaultUnmarshalMsgFunc,
+		unmarshalMsgFunc: defaultUnmarshalMsgFunc,
 		requeueOnNack:    true,
 		exchange: &Exchange{
 			NameFunc: func(topic string) string {
@@ -133,18 +131,6 @@ func WithRequeueOnNack(enable bool) Option {
 	}
 }
 
-func WithTLSConfig(config *tls.Config) Option {
-	return func(o *options) {
-		o.tlsConfig = config
-	}
-}
-
-func WithAMQPConfig(config *amqp.Config) Option {
-	return func(o *options) {
-		o.amqpConfig = config
-	}
-}
-
 func WithQosConfig(qosConfig *QosConfig) Option {
 	return func(o *options) {
 		o.qosConfig = qosConfig
@@ -181,7 +167,46 @@ func WithReconnectBackoff(reconnectBackoff backoffutils.BackoffFunc) Option {
 	}
 }
 
-func DefaultUnmarshalMsgFunc(ctx context.Context, topic string, amqpMsg *amqp.Delivery) (msg *easypubsub.Message, err error) {
+const (
+	_ = iota
+	normalConnectionType
+	tlsConnectionType
+	amqpConnectionType
+)
+
+type connectionOptions struct {
+	connectionType int
+	url            string
+	tlsConfig      *tls.Config
+	amqpConfig     *amqp.Config
+}
+
+type ConnectionOption func(o *connectionOptions)
+
+func Connection(url string) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.connectionType = normalConnectionType
+	}
+}
+
+func ConnectionWithTLS(url string, tlsConfig *tls.Config) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.tlsConfig = tlsConfig
+		o.connectionType = tlsConnectionType
+	}
+}
+
+func ConnectionWithConfig(url string, amqpConfig *amqp.Config) ConnectionOption {
+	return func(o *connectionOptions) {
+		o.url = url
+		o.amqpConfig = amqpConfig
+		o.connectionType = amqpConnectionType
+	}
+}
+
+func defaultUnmarshalMsgFunc(ctx context.Context, topic string, amqpMsg *amqp.Delivery) (msg *easypubsub.Message, err error) {
 	header := easypubsub.Header(map[string][]string{
 		"Topic":           {topic},
 		"ContentType":     {amqpMsg.ContentType},
@@ -263,6 +288,5 @@ func addHeader(header easypubsub.Header, key string, f interface{}) error {
 		}
 		return nil
 	}
-
 	return fmt.Errorf("value %T not supported", f)
 }

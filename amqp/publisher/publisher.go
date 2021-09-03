@@ -22,8 +22,8 @@ type PublishResult struct {
 }
 
 type Publisher struct {
+	connO   *connectionOptions
 	o       *options
-	url     string
 	close   int32
 	conn    *amqp.Connection
 	channel *amqp.Channel
@@ -96,28 +96,33 @@ func (pub *Publisher) openConnection() error {
 	return nil
 }
 
-func New(url string, opts ...Option) (easypubsub.Publisher, error) {
+func New(connOpt ConnectionOption, opts ...Option) (easypubsub.Publisher, error) {
+	connO := &connectionOptions{}
+	connOpt(connO)
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Publisher{o: o, url: url, close: NORMAL}
+	pub := &Publisher{o: o, connO: connO, close: NORMAL}
 
-	pub.o.logger.Logf("dial amqp broker %s", pub.url)
-	if pub.o.amqpConfig != nil {
-		conn, err := amqp.DialConfig(pub.url, *pub.o.amqpConfig)
+	pub.o.logger.Logf("dial amqp broker %s", pub.connO.url)
+	switch pub.connO.connectionType {
+	default:
+		return nil, fmt.Errorf("unknown amqp connection type %d", pub.connO.connectionType)
+	case normalConnectionType:
+		conn, err := amqp.Dial(pub.connO.url)
 		if err != nil {
-			return nil, fmt.Errorf("failed dial %s config %v, %w", pub.url, pub.o.amqpConfig, err)
+			return nil, fmt.Errorf("failed dial %s, %w", pub.connO.url, err)
 		}
 		pub.conn = conn
-	} else if pub.o.tlsConfig != nil {
-		conn, err := amqp.DialTLS(pub.url, pub.o.tlsConfig)
+	case tlsConnectionType:
+		conn, err := amqp.DialTLS(pub.connO.url, pub.connO.tlsConfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
+			return nil, fmt.Errorf("failed dial %s with tls %v, %w", pub.connO.url, pub.connO.tlsConfig, err)
 		}
 		pub.conn = conn
-	} else {
-		conn, err := amqp.Dial(pub.url)
+	case amqpConnectionType:
+		conn, err := amqp.DialConfig(pub.connO.url, *pub.connO.amqpConfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed dial %s tlsConfig %v, %w", pub.url, pub.o.amqpConfig, err)
+			return nil, fmt.Errorf("failed dial %s with config %v, %w", pub.connO.url, pub.connO.amqpConfig, err)
 		}
 		pub.conn = conn
 	}

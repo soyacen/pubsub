@@ -11,13 +11,6 @@ import (
 	"github.com/soyacen/easypubsub"
 )
 
-type consumerType = int
-
-const (
-	consumerTypeConsumer      consumerType = 0
-	consumerTypeConsumerGroup consumerType = 1
-)
-
 type UnmarshalMsgFunc func(ctx context.Context, topic string, kafkaMsg *sarama.ConsumerMessage) (msg *easypubsub.Message, err error)
 
 type options struct {
@@ -90,9 +83,15 @@ func WithReconnectBackoff(reconnectBackoff backoffutils.BackoffFunc) Option {
 	}
 }
 
+const (
+	_ = iota
+	consumerConsumerType
+	consumerGroupConsumerType
+)
+
 type consumerOptions struct {
 	brokers        []string
-	consumerType   consumerType
+	consumerType   int
 	consumerConfig *sarama.Config
 	groupID        string
 }
@@ -102,7 +101,7 @@ type ConsumerOption func(o *consumerOptions)
 func defaultConsumerOptions() *consumerOptions {
 	return &consumerOptions{
 		brokers:        nil,
-		consumerType:   consumerTypeConsumer,
+		consumerType:   consumerConsumerType,
 		consumerConfig: DefaultSubscriberConfig(),
 		groupID:        "",
 	}
@@ -110,7 +109,7 @@ func defaultConsumerOptions() *consumerOptions {
 
 func Consumer(brokers []string, config *sarama.Config) ConsumerOption {
 	return func(o *consumerOptions) {
-		o.consumerType = consumerTypeConsumer
+		o.consumerType = consumerConsumerType
 		o.brokers = brokers
 		o.consumerConfig = config
 	}
@@ -118,7 +117,7 @@ func Consumer(brokers []string, config *sarama.Config) ConsumerOption {
 
 func ConsumerGroup(brokers []string, groupID string, config *sarama.Config) ConsumerOption {
 	return func(o *consumerOptions) {
-		o.consumerType = consumerTypeConsumerGroup
+		o.consumerType = consumerGroupConsumerType
 		o.brokers = brokers
 		o.groupID = groupID
 		o.consumerConfig = config

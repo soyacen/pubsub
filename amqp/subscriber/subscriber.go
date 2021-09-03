@@ -20,8 +20,8 @@ const (
 )
 
 type Subscriber struct {
+	connO     *connectionOptions
 	o         *options
-	url       string
 	topic     string
 	closed    int32
 	closeC    chan struct{}
@@ -87,23 +87,26 @@ func (sub *Subscriber) subscribe(ctx context.Context) error {
 }
 
 func (sub *Subscriber) openConnection() error {
-	sub.o.logger.Logf("dial amqp broker %s", sub.url)
-	if sub.o.amqpConfig != nil {
-		conn, err := amqp.DialConfig(sub.url, *sub.o.amqpConfig)
+	sub.o.logger.Logf("dial amqp broker %s", sub.connO.url)
+	switch sub.connO.connectionType {
+	default:
+		return fmt.Errorf("unknown amqp connection type %d", sub.connO.connectionType)
+	case normalConnectionType:
+		conn, err := amqp.Dial(sub.connO.url)
 		if err != nil {
-			return fmt.Errorf("failed dial %s with amqpConfig %v, %w", sub.url, sub.o.amqpConfig, err)
+			return fmt.Errorf("failed dial %s, %w", sub.connO.url, err)
 		}
 		sub.conn = conn
-	} else if sub.o.tlsConfig != nil {
-		conn, err := amqp.DialTLS(sub.url, sub.o.tlsConfig)
+	case tlsConnectionType:
+		conn, err := amqp.DialTLS(sub.connO.url, sub.connO.tlsConfig)
 		if err != nil {
-			return fmt.Errorf("failed dial %s with tlsConfig %v, %w", sub.url, sub.o.tlsConfig, err)
+			return fmt.Errorf("failed dial %s with tls %v, %w", sub.connO.url, sub.connO.tlsConfig, err)
 		}
 		sub.conn = conn
-	} else {
-		conn, err := amqp.Dial(sub.url)
+	case amqpConnectionType:
+		conn, err := amqp.DialConfig(sub.connO.url, *sub.connO.amqpConfig)
 		if err != nil {
-			return fmt.Errorf("failed dial broker %s, %w", sub.url, err)
+			return fmt.Errorf("failed dial %s with config %v, %w", sub.connO.url, sub.connO.amqpConfig, err)
 		}
 		sub.conn = conn
 	}
@@ -330,9 +333,11 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 	close(sub.errC)
 }
 
-func New(url string, opts ...Option) easypubsub.Subscriber {
+func New(connOpt ConnectionOption, opts ...Option) easypubsub.Subscriber {
+	connO := &connectionOptions{}
+	connOpt(connO)
 	o := defaultOptions()
 	o.apply(opts...)
-	sub := &Subscriber{url: url, o: o, closed: NORMAL, closeC: make(chan struct{})}
+	sub := &Subscriber{connO: connO, o: o, closed: NORMAL, closeC: make(chan struct{})}
 	return sub
 }

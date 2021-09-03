@@ -61,8 +61,8 @@ func WithLogger(logger easypubsub.Logger) Option {
 
 const (
 	_ = iota
-	producerTypeSync
-	producerTypeAsync
+	syncProducerType
+	asyncProducerType
 )
 
 type producerOptions struct {
@@ -73,7 +73,7 @@ type producerOptions struct {
 
 func defaultProducerOptions() *producerOptions {
 	return &producerOptions{
-		producerType:   producerTypeSync,
+		producerType:   syncProducerType,
 		producerConfig: DefaultSaramaConfig(),
 	}
 }
@@ -83,7 +83,7 @@ type ProducerOption func(o *producerOptions)
 func SyncProducer(brokers []string, config *sarama.Config) ProducerOption {
 	return func(o *producerOptions) {
 		o.brokers = brokers
-		o.producerType = producerTypeSync
+		o.producerType = syncProducerType
 		o.producerConfig = config
 		o.producerConfig.Producer.Return.Errors = true
 		o.producerConfig.Producer.Return.Successes = true
@@ -93,7 +93,7 @@ func SyncProducer(brokers []string, config *sarama.Config) ProducerOption {
 func AsyncProducer(brokers []string, config *sarama.Config) ProducerOption {
 	return func(o *producerOptions) {
 		o.brokers = brokers
-		o.producerType = producerTypeAsync
+		o.producerType = asyncProducerType
 		o.producerConfig = config
 		o.producerConfig.Producer.Return.Errors = true
 		o.producerConfig.Producer.Return.Successes = true
