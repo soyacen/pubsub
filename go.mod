@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/Shopify/sarama v1.29.1
+	github.com/go-redis/redis/v8 v8.11.3 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/soyacen/goutils/backoffutils v0.0.0-20210731053315-33ff4270a125
