@@ -20,8 +20,8 @@ const (
 )
 
 type Subscriber struct {
+	consumerO          *consumerOptions
 	o                  *options
-	brokers            []string
 	topic              string
 	closed             int32
 	closeC             chan struct{}
@@ -60,13 +60,13 @@ func (sub *Subscriber) String() string {
 }
 
 func (sub *Subscriber) subscribe(ctx context.Context) error {
-	switch sub.o.consumerType {
+	switch sub.consumerO.consumerType {
 	case consumerTypeConsumer:
 		return sub.consumerSubscribe(ctx)
 	case consumerTypeConsumerGroup:
 		return sub.consumerGroupSubscribe(ctx)
 	default:
-		return fmt.Errorf("unknown consumer type %d", sub.o.consumerType)
+		return fmt.Errorf("unknown consumer type %d", sub.consumerO.consumerType)
 	}
 }
 
@@ -83,10 +83,10 @@ func (sub *Subscriber) consumerSubscribe(ctx context.Context) error {
 }
 
 func (sub *Subscriber) createConsumer() error {
-	sub.o.logger.Logf("create broker %v consumer", sub.brokers)
-	consumer, err := sarama.NewConsumer(sub.brokers, sub.o.consumerConfig)
+	sub.o.logger.Logf("create broker %v consumer", sub.consumerO.brokers)
+	consumer, err := sarama.NewConsumer(sub.consumerO.brokers, sub.consumerO.consumerConfig)
 	if err != nil {
-		return fmt.Errorf("failed new kafka %v consumer, %w", sub.brokers, err)
+		return fmt.Errorf("failed new kafka %v consumer, %w", sub.consumerO.brokers, err)
 	}
 	sub.consumer = consumer
 
@@ -98,7 +98,7 @@ func (sub *Subscriber) createConsumer() error {
 
 	partitionConsumers := make([]sarama.PartitionConsumer, 0, len(partitions))
 	for _, partition := range partitions {
-		offset := sub.o.consumerConfig.Consumer.Offsets.Initial
+		offset := sub.consumerO.consumerConfig.Consumer.Offsets.Initial
 		sub.o.logger.Logf("create partition %d consumer, offset %d", partition, offset)
 		partitionConsumer, err := sub.consumer.ConsumePartition(sub.topic, partition, offset)
 		if err != nil {
@@ -216,10 +216,10 @@ func (sub *Subscriber) consumerGroupSubscribe(ctx context.Context) error {
 }
 
 func (sub *Subscriber) createConsumerGroup() error {
-	sub.o.logger.Logf("create broker %v consumer group %s", sub.brokers, sub.o.groupID)
-	consumerGroup, err := sarama.NewConsumerGroup(sub.brokers, sub.o.groupID, sub.o.consumerConfig)
+	sub.o.logger.Logf("create broker %v consumer group %s", sub.consumerO.brokers, sub.consumerO.groupID)
+	consumerGroup, err := sarama.NewConsumerGroup(sub.consumerO.brokers, sub.consumerO.groupID, sub.consumerO.consumerConfig)
 	if err != nil {
-		return fmt.Errorf("failed new kafka %v consumer group %s, %w", sub.brokers, sub.o.groupID, err)
+		return fmt.Errorf("failed new kafka %v consumer group %s, %w", sub.consumerO.brokers, sub.consumerO.groupID, err)
 	}
 	sub.consumerGroup = consumerGroup
 	return nil
@@ -391,14 +391,16 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 	close(sub.msgC)
 }
 
-func New(brokers []string, opts ...Option) easypubsub.Subscriber {
+func New(consumerOpt ConsumerOption, opts ...Option) easypubsub.Subscriber {
+	consumerO := defaultConsumerOptions()
+	consumerOpt(consumerO)
 	o := defaultOptions()
 	o.apply(opts...)
 	sub := &Subscriber{
-		brokers: brokers,
-		o:       o,
-		closed:  NORMAL,
-		closeC:  make(chan struct{}),
+		consumerO: consumerO,
+		o:         o,
+		closed:    NORMAL,
+		closeC:    make(chan struct{}),
 	}
 	return sub
 }

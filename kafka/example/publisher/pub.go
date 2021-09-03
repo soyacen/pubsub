@@ -17,9 +17,8 @@ func main() {
 
 func async() {
 	publisher, err := kafkapublisher.New(
-		[]string{"localhost:9092"},
+		kafkapublisher.AsyncProducer([]string{"localhost:9092"}, kafkapublisher.DefaultSaramaConfig()),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
-		kafkapublisher.WithAsyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
 
 	for i := 0; i < 10000; i++ {
@@ -38,9 +37,8 @@ func async() {
 
 func sync() {
 	publisher, err := kafkapublisher.New(
-		[]string{"localhost:9092"},
+		kafkapublisher.SyncProducer([]string{"localhost:9092"}, kafkapublisher.DefaultSaramaConfig()),
 		kafkapublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
-		kafkapublisher.WithSyncProducerConfig(kafkapublisher.DefaultSaramaConfig()),
 	)
 	if err != nil {
 		panic(err)

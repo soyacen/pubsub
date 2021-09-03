@@ -20,8 +20,7 @@ func main() {
 
 func consumerGroup() {
 	subscriber := kafkasubscriber.New(
-		[]string{"localhost:9092"},
-		kafkasubscriber.WithConsumerGroupConfig("awesome-2", kafkasubscriber.DefaultSubscriberConfig()),
+		kafkasubscriber.ConsumerGroup([]string{"localhost:9092"}, "awesome-2", kafkasubscriber.DefaultSubscriberConfig()),
 		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
 	go func(subscriber easypubsub.Subscriber) {
@@ -63,8 +62,7 @@ out:
 
 func consumer() {
 	subscriber := kafkasubscriber.New(
-		[]string{"localhost:9092"},
-		kafkasubscriber.WithConsumerConfig(kafkasubscriber.DefaultSubscriberConfig()),
+		kafkasubscriber.Consumer([]string{"localhost:9092"}, kafkasubscriber.DefaultSubscriberConfig()),
 		kafkasubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 		kafkasubscriber.WithNackResend(3, backoffutils.Linear(3*time.Second)),
 		kafkasubscriber.WithReconnectBackoff(backoffutils.Constant(5*time.Second)),

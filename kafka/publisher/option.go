@@ -10,18 +10,9 @@ import (
 
 type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error)
 
-type producerType = int
-
-const (
-	producerTypeSync  producerType = 0
-	producerTypeAsync producerType = 1
-)
-
 type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
-	producerType   producerType
-	producerConfig *sarama.Config
 }
 
 func (o *options) apply(opts ...Option) {
@@ -32,10 +23,25 @@ func (o *options) apply(opts ...Option) {
 
 func defaultOptions() *options {
 	return &options{
-		logger:         easypubsub.DefaultLogger(),
-		marshalMsgFunc: DefaultMarshalMsgFunc,
-		producerType:   producerTypeSync,
-		producerConfig: DefaultSaramaConfig(),
+		logger: easypubsub.DefaultLogger(),
+		marshalMsgFunc: func(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error) {
+			kafkaHeaders := []sarama.RecordHeader{
+				{Key: []byte(easypubsub.DefaultMessageUUIDKey), Value: []byte(msg.Id())},
+			}
+			msgHeader := msg.Header()
+			for key, values := range msgHeader {
+				for _, value := range values {
+					header := sarama.RecordHeader{Key: []byte(key), Value: []byte(value)}
+					kafkaHeaders = append(kafkaHeaders, header)
+				}
+			}
+			pMsg := &sarama.ProducerMessage{
+				Topic:   topic,
+				Value:   sarama.ByteEncoder(msg.Body()),
+				Headers: kafkaHeaders,
+			}
+			return pMsg, nil
+		},
 	}
 }
 
@@ -53,8 +59,30 @@ func WithLogger(logger easypubsub.Logger) Option {
 	}
 }
 
-func WithSyncProducerConfig(config *sarama.Config) Option {
-	return func(o *options) {
+const (
+	_ = iota
+	producerTypeSync
+	producerTypeAsync
+)
+
+type producerOptions struct {
+	brokers        []string
+	producerType   int
+	producerConfig *sarama.Config
+}
+
+func defaultProducerOptions() *producerOptions {
+	return &producerOptions{
+		producerType:   producerTypeSync,
+		producerConfig: DefaultSaramaConfig(),
+	}
+}
+
+type ProducerOption func(o *producerOptions)
+
+func SyncProducer(brokers []string, config *sarama.Config) ProducerOption {
+	return func(o *producerOptions) {
+		o.brokers = brokers
 		o.producerType = producerTypeSync
 		o.producerConfig = config
 		o.producerConfig.Producer.Return.Errors = true
@@ -62,32 +90,14 @@ func WithSyncProducerConfig(config *sarama.Config) Option {
 	}
 }
 
-func WithAsyncProducerConfig(config *sarama.Config) Option {
-	return func(o *options) {
+func AsyncProducer(brokers []string, config *sarama.Config) ProducerOption {
+	return func(o *producerOptions) {
+		o.brokers = brokers
 		o.producerType = producerTypeAsync
 		o.producerConfig = config
 		o.producerConfig.Producer.Return.Errors = true
 		o.producerConfig.Producer.Return.Successes = true
 	}
-}
-
-func DefaultMarshalMsgFunc(topic string, msg *easypubsub.Message) (*sarama.ProducerMessage, error) {
-	kafkaHeaders := []sarama.RecordHeader{
-		{Key: []byte(easypubsub.DefaultMessageUUIDKey), Value: []byte(msg.Id())},
-	}
-	msgHeader := msg.Header()
-	for key, values := range msgHeader {
-		for _, value := range values {
-			header := sarama.RecordHeader{Key: []byte(key), Value: []byte(value)}
-			kafkaHeaders = append(kafkaHeaders, header)
-		}
-	}
-	pMsg := &sarama.ProducerMessage{
-		Topic:   topic,
-		Value:   sarama.ByteEncoder(msg.Body()),
-		Headers: kafkaHeaders,
-	}
-	return pMsg, nil
 }
 
 func DefaultSaramaConfig() *sarama.Config {

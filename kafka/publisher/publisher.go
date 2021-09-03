@@ -25,8 +25,8 @@ type PublishResult struct {
 }
 
 type Publisher struct {
+	producerO     *producerOptions
 	o             *options
-	brokers       []string
 	close         int32
 	syncProducer  sarama.SyncProducer
 	asyncProducer sarama.AsyncProducer
@@ -50,7 +50,7 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 	producerMsg.Metadata = id
 
 	pub.o.logger.Logf("send message %s", id)
-	switch pub.o.producerType {
+	switch pub.producerO.producerType {
 	case producerTypeSync:
 		partition, offset, err := pub.syncProducer.SendMessage(producerMsg)
 		if err != nil {
@@ -61,13 +61,13 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 		pub.asyncProducer.Input() <- producerMsg
 		return &easypubsub.PublishResult{Result: id}
 	default:
-		return &easypubsub.PublishResult{Err: fmt.Errorf("unknown publisher type %d", pub.o.producerType)}
+		return &easypubsub.PublishResult{Err: fmt.Errorf("unknown publisher type %d", pub.producerO.producerType)}
 	}
 }
 
 func (pub *Publisher) Close() error {
 	if atomic.CompareAndSwapInt32(&pub.close, NORMAL, CLOSED) {
-		switch pub.o.producerType {
+		switch pub.producerO.producerType {
 		case producerTypeSync:
 			return pub.syncProducer.Close()
 		case producerTypeAsync:
@@ -82,14 +82,7 @@ func (pub *Publisher) Close() error {
 }
 
 func (pub *Publisher) String() string {
-	switch pub.o.producerType {
-	case producerTypeSync:
-		return "KafkaSyncPublisher"
-	case producerTypeAsync:
-		return "KafkaAsyncPublisher"
-	default:
-		return ""
-	}
+	return "KafkaPublisher"
 }
 
 func (pub *Publisher) handleSuccesses() {
@@ -110,19 +103,23 @@ func (pub *Publisher) recoverHandler(p interface{}) {
 	pub.o.logger.Logf("recover panic %v", p)
 }
 
-func New(brokers []string, opts ...Option) (easypubsub.Publisher, error) {
+func New(producerOpt ProducerOption, opts ...Option) (easypubsub.Publisher, error) {
+	producerO := defaultProducerOptions()
+	producerOpt(producerO)
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Publisher{o: o, brokers: brokers, close: NORMAL, wg: sync.WaitGroup{}}
-	switch pub.o.producerType {
+	pub := &Publisher{producerO: producerO, o: o, close: NORMAL, wg: sync.WaitGroup{}}
+	switch pub.producerO.producerType {
+	default:
+		return nil, fmt.Errorf("unknown publisher type %d", pub.producerO.producerType)
 	case producerTypeSync:
-		producer, err := sarama.NewSyncProducer(pub.brokers, pub.o.producerConfig)
+		producer, err := sarama.NewSyncProducer(pub.producerO.brokers, pub.producerO.producerConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed new kafka sync producer, %w", err)
 		}
 		pub.syncProducer = producer
 	case producerTypeAsync:
-		producer, err := sarama.NewAsyncProducer(pub.brokers, pub.o.producerConfig)
+		producer, err := sarama.NewAsyncProducer(pub.producerO.brokers, pub.producerO.producerConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed new kafka async producer, %w", err)
 		}
@@ -130,8 +127,6 @@ func New(brokers []string, opts ...Option) (easypubsub.Publisher, error) {
 		pub.wg.Add(2)
 		go errorutils.WithRecover(pub.recoverHandler, pub.handleSuccesses)
 		go errorutils.WithRecover(pub.recoverHandler, pub.handleErrors)
-	default:
-		return nil, fmt.Errorf("unknown publisher type %d", o.producerType)
 	}
 	return pub, nil
 }
