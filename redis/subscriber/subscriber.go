@@ -68,21 +68,24 @@ func (sub *Subscriber) subscribe(ctx context.Context) error {
 
 func (sub *Subscriber) createRedisClient(ctx context.Context) error {
 	switch sub.clientO.clientType {
+	default:
+		return fmt.Errorf("unknown redis client type %d", sub.clientO.clientType)
 	case sampleClientType:
 		sub.o.logger.Logf("create sample redis client")
 		sub.redisCli = redis.NewClient(sub.clientO.sampleClientOptions)
-		return nil
 	case failoverClientType:
 		sub.o.logger.Logf("create failover redis client")
 		sub.redisCli = redis.NewFailoverClient(sub.clientO.failoverClientOptions)
-		return nil
 	case clusterClientType:
 		sub.o.logger.Logf("create cluster redis client")
 		sub.redisCli = redis.NewClusterClient(sub.clientO.clusterClientOptions)
-		return nil
-	default:
-		return fmt.Errorf("unknown redis client type %d", sub.clientO.clientType)
 	}
+	ctx, _ = context.WithTimeout(ctx, time.Second)
+	_, err := sub.redisCli.Ping(ctx).Result()
+	if err != nil {
+		return fmt.Errorf("failed to ping redis, %w", err)
+	}
+	return nil
 }
 
 func (sub *Subscriber) sampleSubscribe(ctx context.Context) error {
@@ -145,6 +148,9 @@ func (sub *Subscriber) waitConsume(ctx context.Context) <-chan struct{} {
 		sub.o.logger.Log("closing redis pubsub")
 		if err := sub.redisPubSub.Close(); err != nil {
 			sub.errC <- fmt.Errorf("failed to close redis pubsub, %w", err)
+		}
+		if err := sub.redisCli.Close(); err != nil {
+			sub.errC <- fmt.Errorf("failed to close redis client, %w", err)
 		}
 		close(exitC)
 	}()

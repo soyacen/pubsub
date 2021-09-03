@@ -1,9 +1,11 @@
 package redispublisher
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 
@@ -16,10 +18,10 @@ const (
 )
 
 type Publisher struct {
+	clientO  *clientOptions
 	o        *options
 	redisCli redis.UniversalClient
 	close    int32
-	clientO  *clientOptions
 }
 
 func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *easypubsub.PublishResult) {
@@ -65,6 +67,11 @@ func New(clientOpt ClientOption, opts ...Option) (easypubsub.Publisher, error) {
 	default:
 		return nil, fmt.Errorf("unknown redis client type %d", clientO.clientType)
 	}
-	pub := &Publisher{o: o, clientO: clientO, redisCli: redisCli}
+	ctx, _ := context.WithTimeout(context.Background(), time.Second)
+	_, err := redisCli.Ping(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to ping redis, %w", err)
+	}
+	pub := &Publisher{clientO: clientO, o: o, redisCli: redisCli}
 	return pub, nil
 }
