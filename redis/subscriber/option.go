@@ -117,3 +117,40 @@ func WithReSubBackoff(reSubBackoff backoffutils.BackoffFunc) Option {
 		o.resubBackoff = reSubBackoff
 	}
 }
+
+const (
+	_ = iota
+	sampleClientType
+	failoverClientType
+	clusterClientType
+)
+
+type clientOptions struct {
+	clientType            int
+	sampleClientOptions   *redis.Options
+	failoverClientOptions *redis.FailoverOptions
+	clusterClientOptions  *redis.ClusterOptions
+}
+
+type ClientOption func(o *clientOptions)
+
+func SampleClient(opts *redis.Options) ClientOption {
+	return func(o *clientOptions) {
+		o.sampleClientOptions = opts
+		o.clientType = sampleClientType
+	}
+}
+
+func FailoverClient(opts *redis.FailoverOptions) ClientOption {
+	return func(o *clientOptions) {
+		o.failoverClientOptions = opts
+		o.clientType = failoverClientType
+	}
+}
+
+func ClusterClient(opts *redis.ClusterOptions) ClientOption {
+	return func(o *clientOptions) {
+		o.clusterClientOptions = opts
+		o.clientType = clusterClientType
+	}
+}

@@ -19,11 +19,8 @@ func main() {
 }
 
 func sample() {
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
 	subscriber := redissubscriber.New(
-		client,
+		redissubscriber.SampleClient(&redis.Options{Addr: "localhost:6379"}),
 		redissubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
 	defer func(subscriber easypubsub.Subscriber) {
@@ -70,11 +67,8 @@ out:
 }
 
 func pattern() {
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
 	subscriber := redissubscriber.New(
-		client,
+		redissubscriber.SampleClient(&redis.Options{Addr: "localhost:6379"}),
 		redissubscriber.WithEnablePatternSubscribe(),
 		redissubscriber.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)

@@ -20,6 +20,7 @@ const (
 )
 
 type Subscriber struct {
+	clientO     *clientOptions
 	o           *options
 	topic       string
 	closed      int32
@@ -65,6 +66,25 @@ func (sub *Subscriber) subscribe(ctx context.Context) error {
 	}
 }
 
+func (sub *Subscriber) createRedisClient(ctx context.Context) error {
+	switch sub.clientO.clientType {
+	case sampleClientType:
+		sub.o.logger.Logf("create sample redis client")
+		sub.redisCli = redis.NewClient(sub.clientO.sampleClientOptions)
+		return nil
+	case failoverClientType:
+		sub.o.logger.Logf("create failover redis client")
+		sub.redisCli = redis.NewFailoverClient(sub.clientO.failoverClientOptions)
+		return nil
+	case clusterClientType:
+		sub.o.logger.Logf("create cluster redis client")
+		sub.redisCli = redis.NewClusterClient(sub.clientO.clusterClientOptions)
+		return nil
+	default:
+		return fmt.Errorf("unknown redis client type %d", sub.clientO.clientType)
+	}
+}
+
 func (sub *Subscriber) sampleSubscribe(ctx context.Context) error {
 	sub.o.logger.Log("start sample subscribe")
 	if err := sub.createSampleSubscriber(ctx); err != nil {
@@ -77,6 +97,9 @@ func (sub *Subscriber) sampleSubscribe(ctx context.Context) error {
 }
 
 func (sub *Subscriber) createSampleSubscriber(ctx context.Context) error {
+	if err := sub.createRedisClient(ctx); err != nil {
+		return err
+	}
 	sub.o.logger.Logf("create sample subscriber")
 	sub.redisPubSub = sub.redisCli.Subscribe(ctx)
 	channel := sub.o.generateChannel(sub.topic)
@@ -99,6 +122,9 @@ func (sub *Subscriber) patternSubscribe(ctx context.Context) error {
 }
 
 func (sub *Subscriber) createPatternSubscriber(ctx context.Context) error {
+	if err := sub.createRedisClient(ctx); err != nil {
+		return err
+	}
 	sub.o.logger.Logf("create pattern subscriber")
 	sub.redisPubSub = sub.redisCli.PSubscribe(ctx)
 	pattern := sub.o.generatePattern(sub.topic)
@@ -252,14 +278,16 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 	close(sub.msgC)
 }
 
-func New(redisCli redis.UniversalClient, opts ...Option) easypubsub.Subscriber {
+func New(clientOpt ClientOption, opts ...Option) easypubsub.Subscriber {
 	o := defaultOptions()
 	o.apply(opts...)
+	clientO := &clientOptions{}
+	clientOpt(clientO)
 	sub := &Subscriber{
-		redisCli: redisCli,
-		o:        o,
-		closed:   NORMAL,
-		closeC:   make(chan struct{}),
+		clientO: clientO,
+		o:       o,
+		closed:  NORMAL,
+		closeC:  make(chan struct{}),
 	}
 	return sub
 }

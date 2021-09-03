@@ -19,6 +19,7 @@ type Publisher struct {
 	o        *options
 	redisCli redis.UniversalClient
 	close    int32
+	clientO  *clientOptions
 }
 
 func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *easypubsub.PublishResult) {
@@ -39,7 +40,7 @@ func (pub *Publisher) Publish(topic string, msg *easypubsub.Message) (result *ea
 
 func (pub *Publisher) Close() error {
 	if atomic.CompareAndSwapInt32(&pub.close, NORMAL, CLOSED) {
-		return nil
+		return pub.redisCli.Close()
 	}
 	return nil
 }
@@ -48,9 +49,22 @@ func (pub *Publisher) String() string {
 	return "RedisPublisher"
 }
 
-func New(redisCli redis.UniversalClient, opts ...Option) (easypubsub.Publisher, error) {
+func New(clientOpt ClientOption, opts ...Option) (easypubsub.Publisher, error) {
 	o := defaultOptions()
 	o.apply(opts...)
-	pub := &Publisher{o: o, redisCli: redisCli}
+	clientO := &clientOptions{}
+	clientOpt(clientO)
+	var redisCli redis.UniversalClient
+	switch clientO.clientType {
+	case sampleClientType:
+		redisCli = redis.NewClient(clientO.sampleClientOptions)
+	case failoverClientType:
+		redisCli = redis.NewFailoverClient(clientO.failoverClientOptions)
+	case clusterClientType:
+		redisCli = redis.NewClusterClient(clientO.clusterClientOptions)
+	default:
+		return nil, fmt.Errorf("unknown redis client type %d", clientO.clientType)
+	}
+	pub := &Publisher{o: o, clientO: clientO, redisCli: redisCli}
 	return pub, nil
 }

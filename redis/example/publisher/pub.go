@@ -22,11 +22,8 @@ func main() {
 }
 
 func awesome() {
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
 	publisher, err := redispublisher.New(
-		client,
+		redispublisher.SampleClient(&redis.Options{Addr: "localhost:6379"}),
 		redispublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
 	if err != nil {
@@ -47,11 +44,8 @@ func awesome() {
 }
 
 func startsome() {
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
 	publisher, err := redispublisher.New(
-		client,
+		redispublisher.SampleClient(&redis.Options{Addr: "localhost:6379"}),
 		redispublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
 	if err != nil {
@@ -72,11 +66,8 @@ func startsome() {
 }
 
 func something() {
-	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
 	publisher, err := redispublisher.New(
-		client,
+		redispublisher.SampleClient(&redis.Options{Addr: "localhost:6379"}),
 		redispublisher.WithLogger(easypubsub.NewStdLogger(os.Stdout)),
 	)
 	if err != nil {
