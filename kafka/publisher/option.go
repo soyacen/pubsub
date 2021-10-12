@@ -13,7 +13,6 @@ type MarshalMsgFunc func(topic string, msg *easypubsub.Message) (*sarama.Produce
 type options struct {
 	logger         easypubsub.Logger
 	marshalMsgFunc MarshalMsgFunc
-	clientID       string
 }
 
 func (o *options) apply(opts ...Option) {
@@ -43,7 +42,6 @@ func defaultOptions() *options {
 			}
 			return pMsg, nil
 		},
-		clientID: "easypubsub",
 	}
 }
 
@@ -58,12 +56,6 @@ func WithMarshalMsgFunc(marshalMsgFunc MarshalMsgFunc) Option {
 func WithLogger(logger easypubsub.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
-	}
-}
-
-func WithClientID(clientID string) Option {
-	return func(o *options) {
-		o.clientID = clientID
 	}
 }
 
@@ -114,5 +106,6 @@ func DefaultSaramaConfig() *sarama.Config {
 	config.Producer.Return.Successes = true
 	config.Producer.Return.Errors = true
 	config.Metadata.Retry.Backoff = time.Second * 2
+	config.ClientID = "easypubsub"
 	return config
 }
