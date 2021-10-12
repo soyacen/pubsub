@@ -394,8 +394,12 @@ func (sub *Subscriber) closeErrCAndMsgC(err error) {
 func New(consumerOpt ConsumerOption, opts ...Option) easypubsub.Subscriber {
 	consumerO := defaultConsumerOptions()
 	consumerOpt(consumerO)
+
 	o := defaultOptions()
 	o.apply(opts...)
+
+	consumerO.consumerConfig.ClientID = o.clientID
+
 	sub := &Subscriber{
 		consumerO: consumerO,
 		o:         o,

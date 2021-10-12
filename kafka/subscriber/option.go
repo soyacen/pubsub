@@ -17,6 +17,8 @@ type options struct {
 	logger           easypubsub.Logger
 	unmarshalMsgFunc UnmarshalMsgFunc
 
+	clientID string
+
 	nackResendMaxAttempt uint
 	nackResendBackoff    backoffutils.BackoffFunc
 	reconnectBackoff     backoffutils.BackoffFunc
@@ -50,6 +52,7 @@ func defaultOptions() *options {
 			)
 			return msg, nil
 		},
+		clientID:             "easypubsub",
 		nackResendMaxAttempt: 2,
 		nackResendBackoff:    backoffutils.Linear(100 * time.Millisecond),
 		reconnectBackoff:     backoffutils.Constant(time.Minute),
@@ -61,6 +64,12 @@ type Option func(o *options)
 func WithUnmarshalMsgFunc(unmarshalMsgFunc UnmarshalMsgFunc) Option {
 	return func(o *options) {
 		o.unmarshalMsgFunc = unmarshalMsgFunc
+	}
+}
+
+func WithClientID(clientID string) Option {
+	return func(o *options) {
+		o.clientID = clientID
 	}
 }
 
@@ -128,6 +137,5 @@ func DefaultSubscriberConfig() *sarama.Config {
 	config := sarama.NewConfig()
 	config.Consumer.Return.Errors = true
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
-	config.ClientID = "easypubsub"
 	return config
 }

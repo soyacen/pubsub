@@ -104,10 +104,16 @@ func (pub *Publisher) recoverHandler(p interface{}) {
 }
 
 func New(producerOpt ProducerOption, opts ...Option) (easypubsub.Publisher, error) {
+
 	producerO := defaultProducerOptions()
 	producerOpt(producerO)
+
 	o := defaultOptions()
 	o.apply(opts...)
+
+	// 设置clientID
+	producerO.producerConfig.ClientID = o.clientID
+
 	pub := &Publisher{producerO: producerO, o: o, close: NORMAL, wg: sync.WaitGroup{}}
 	switch pub.producerO.producerType {
 	default:

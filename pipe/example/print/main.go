@@ -55,7 +55,7 @@ func main() {
 			return nil
 		},
 		easypubsubpipe.WithInterceptors(
-			pipemiddleware.Recovery(func(p interface{}) (err error) { return errors.New(fmt.Sprint(p)) }),
+			pipemiddleware.CustomRecovery(func(p interface{}) (err error) { return errors.New(fmt.Sprint(p)) }),
 			func(msg *easypubsub.Message, handler easypubsubpipe.MessageHandler) error {
 				randInt := rand.Intn(100)
 				if randInt > 90 {

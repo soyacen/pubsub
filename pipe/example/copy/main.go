@@ -70,7 +70,7 @@ func main() {
 			fmt.Println(ackResp, i)
 			return nil
 		},
-		easypubsubpipe.WithInterceptors(pipemiddleware.Recovery(func(p interface{}) (err error) {
+		easypubsubpipe.WithInterceptors(pipemiddleware.CustomRecovery(func(p interface{}) (err error) {
 			fmt.Println("Recovery: ", p)
 			i++
 			return errors.New(fmt.Sprint(p))
