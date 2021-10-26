@@ -5,14 +5,17 @@ import (
 	"os"
 	"time"
 
+	"github.com/Shopify/sarama"
+
 	"github.com/soyacen/easypubsub"
 
 	kafkapublisher "github.com/soyacen/easypubsub/kafka/publisher"
 )
 
 func main() {
-	sync()
+	//sync()
 	//async()
+	saramaSync()
 }
 
 func async() {
@@ -52,6 +55,23 @@ func sync() {
 		time.Sleep(time.Millisecond * 100)
 	}
 	err = publisher.Close()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func saramaSync() {
+	config := sarama.NewConfig()
+	//config.Admin.Timeout = 3*time.Second
+	config.Net.DialTimeout = 3 * time.Second
+	config.Metadata.Timeout = 3 * time.Second
+	//config.Producer.Timeout = 3*time.Second
+	config.Producer.Return.Successes = true
+	_, err := sarama.NewSyncProducer([]string{
+		"192.168.4.95:9092",
+		"192.168.4.96:9092",
+		"192.168.4.97:9092",
+	}, config)
 	if err != nil {
 		panic(err)
 	}
